@@ -1,4 +1,4 @@
-# QA Test Case Generator 🧪
+# QA Test Case Generator
 > Powered by Ollama (local LLM) + DeepEval (metrics) + FastAPI
 
 ---
