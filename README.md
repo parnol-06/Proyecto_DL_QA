@@ -110,18 +110,17 @@ POST /generate
 
 ---
 
-## Cómo explicarlo en una entrevista
-
-1. **Problema real**: Los QAs escriben casos de prueba manualmente → lento y propenso a olvidos
-2. **Solución**: LLM local (privacidad, sin costos de API) genera casos estructurados
-3. **Evaluación**: DeepEval con G-Eval mide calidad real del output, no solo que "responda algo"
-4. **Diferenciador**: Todo corre offline → datos sensibles nunca salen de la empresa
-
----
-
 ## Ideas de extensión
 
 - [ ] Exportar casos a JIRA / TestRail via API
 - [ ] Generar código de test automatizado (Pytest, Cypress)
 - [ ] Historial de generaciones con comparación de métricas
 - [ ] Fine-tuning del modelo con casos de prueba propios
+
+---
+
+## Copyright
+© 2026 **Arnol Ferney Pérez** & **Jesus Andres Cabezas**
+
+Todos los derechos reservados.
+Este proyecto fue desarrollado como herramienta de apoyo para ingenieros QA.
