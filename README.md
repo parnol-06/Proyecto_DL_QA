@@ -35,19 +35,16 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Levantar el backend
+### 3. Levantar la aplicación (UN SOLO COMANDO) ✅
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-### 4. Abrir la UI
-Abre `frontend/index.html` directamente en el navegador.
-O sirve con:
-```bash
-cd frontend && python -m http.server 3000
-```
-→ Abre http://localhost:3000
+✅ **¡Listo! Backend y Frontend corren juntos en el mismo servidor.**
+Abre directamente en tu navegador: **http://localhost:8000**
+
+No necesitas levantar servidores separados, no necesitas abrir archivos html directamente.
 
 ---
 

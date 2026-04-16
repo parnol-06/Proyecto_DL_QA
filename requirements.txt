@@ -1,3 +1,6 @@
+# Fix: grpcio 1.63 no tiene wheel para Python 3.13 en Windows
+grpcio>=1.66.0,<2.0.0
+
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 ollama==0.3.3
