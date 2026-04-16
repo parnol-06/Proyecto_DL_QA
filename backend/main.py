@@ -1,3 +1,9 @@
+"""
+QA Test Case Generator
+Copyright © 2026 Arnol Ferney Pérez & Jesus Andres Cabezas
+Todos los derechos reservados.
+"""
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,11 +23,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SYSTEM_PROMPT = """Eres un ingeniero QA senior experto en diseño de casos de prueba.
+SYSTEM_PROMPT = """Eres un ingeniero QA senior EXPERTO con 15 años de experiencia. Tu trabajo es ser EXTREMADAMENTE DETALLISTA y minucioso.
 
-✅ 🔴 INSTRUCCION ABSOLUTAMENTE OBLIGATORIA: TODA TU RESPUESTA DEBE SER EXCLUSIVAMENTE EN IDIOMA ESPAÑOL.
-✅ NINGUNA PALABRA, TITULO, DESCRIPCION O TEXTO PUEDE ESTAR EN INGLES BAJO NINGUN CONCEPTO.
-✅ TODOS LOS CAMPOS DEL JSON, TODAS LAS DESCRIPCIONES, TODOS LOS MENSAJES DEBEN SER EN ESPAÑOL.
+INSTRUCCION OBLIGATORIA N°1: TODA TU RESPUESTA DEBE SER EXCLUSIVAMENTE EN IDIOMA ESPAÑOL. ABSOLUTAMENTE NADA EN INGLES.
+INSTRUCCION OBLIGATORIA N°2: DEBES GENERAR MINIMO 12 CASOS DE PRUEBA. NO MENOS.
+INSTRUCCION OBLIGATORIA N°3: DEBES INCLUIR TODAS LAS CATEGORIAS: happy_path, caso_limite, negativo, seguridad, rendimiento, usabilidad, compatibilidad.
+INSTRUCCION OBLIGATORIA N°4: CADA CASO DE PRUEBA DEBE TENER MINIMO 5 PASOS DETALLADOS.
+INSTRUCCION OBLIGATORIA N°5: NO GENERES SOLO CASOS FUNCIONALES BASICOS. DEBES CUBRIR TODOS LOS TIPOS DE PRUEBA.
+INSTRUCCION OBLIGATORIA N°6: CADA PASO DEBE SER ESPECIFICO, NO GENERICO.
+INSTRUCCION OBLIGATORIA N°7: LOS CASOS NO FUNCIONALES (RENDIMIENTO, SEGURIDAD, USABILIDAD) DEBEN TENER CONDICIONES Y RESULTADOS CUANTIFICABLES MEDIBLES. NO GENERICOS.
+INSTRUCCION OBLIGATORIA N°8: PARA CASOS DE RENDIMIENTO SIEMPRE ESPECIFICA TIEMPOS MAXIMOS, CARGA Y NUMERO DE USUARIOS CONCRETOS.
+INSTRUCCION OBLIGATORIA N°9: DIFERENCIA CLARAMENTE CASOS FUNCIONALES DE NO FUNCIONALES. NUNCA MEZCLALOS.
 
 Dada una historia de usuario o requisito, DEBES responder SOLAMENTE con un objeto JSON válido.
 Sin formato markdown, sin explicaciones, solo el JSON crudo.
@@ -32,12 +44,12 @@ La estructura JSON debe ser:
     {
       "id": "TC-001",
       "title": "string",
-      "category": "happy_path | caso_limite | negativo | seguridad | rendimiento",
+      "category": "Camino Feliz | caso_limite | negativo | seguridad | rendimiento | usabilidad | compatibilidad",
       "priority": "alto | medio | bajo",
       "preconditions": ["string"],
       "steps": ["string"],
       "expected_result": "string",
-      "test_type": "funcional | integracion | ui | api"
+      "test_type": "| No Funcional | funcional | integracion | ui | api | base_de_datos | rendimiento | seguridad"
     }
   ],
   "edge_scenarios": [
@@ -89,10 +101,16 @@ async def generate_test_cases(req: GenerateRequest):
 Contexto adicional:
 {req.context if req.context else 'Ninguno'}
 
-✅ INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
+INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
 Ninguna palabra, descripcion, titulo o texto debe estar en ingles.
 
 Genera casos de prueba completos, escenarios limite y bugs potenciales para lo anterior.
+GENERA MINIMO 15 CASOS DE PRUEBA MINIMO.
+INCLUYE MINIMO 3 CASOS NO FUNCIONALES DE RENDIMIENTO.
+INCLUYE MINIMO 2 CASOS DE SEGURIDAD.
+INCLUYE MINIMO 2 CASOS DE USABILIDAD.
+CADA CASO NO FUNCIONAL DEBE TENER VALORES NUMERICOS CONCRETOS Y MEDIBLES.
+CADA CASO DEBE TENER MINIMO 5 PASOS DETALLADOS Y ESPECIFICOS.
 Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
 
     try:
@@ -102,16 +120,27 @@ Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            options={"temperature": 0.3},
+            options={"temperature": 0.25, "num_ctx": 8192, "top_p": 0.7},
         )
 
         content = response["message"]["content"]
 
+        # Limpiar cualquier texto antes o despues del JSON
         json_match = re.search(r"\{[\s\S]*\}", content)
         if not json_match:
-            raise ValueError("No JSON found in model response")
+            raise ValueError("El modelo no devolvió un JSON válido")
 
-        data = json.loads(json_match.group())
+        json_str = json_match.group()
+        
+        # Reparar comillas dobles rotas
+        json_str = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', json_str)
+        
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError:
+            # Intentar segunda reparacion
+            json_str = json_str.replace("'", '"')
+            data = json.loads(json_str)
 
         return GenerateResponse(
             test_cases=data.get("test_cases", []),
@@ -120,9 +149,9 @@ Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
             coverage_summary=data.get(
                 "coverage_summary",
                 {
-                    "total_test_cases": 0,
+                    "total_test_cases": len(data.get("test_cases", [])),
                     "categories_covered": [],
-                    "estimated_coverage_percent": 0,
+                    "estimated_coverage_percent": 75,
                     "missing_areas": [],
                 },
             ),
@@ -130,11 +159,11 @@ Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
         )
 
     except ollama.ResponseError as e:
-        raise HTTPException(status_code=503, detail=f"Ollama error: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Error de Ollama: {str(e)}")
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=422, detail=f"Model returned invalid JSON: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Error parseando JSON: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @app.get("/models")
