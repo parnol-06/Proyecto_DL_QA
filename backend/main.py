@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import ollama
 import json
 import re
+import os
 
 app = FastAPI(title="QA Test Case Generator")
 
@@ -14,29 +17,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SYSTEM_PROMPT = """You are a senior QA engineer expert in test case design.
-Given a user story or requirement, you MUST respond ONLY with a valid JSON object.
-No markdown, no explanation, just the raw JSON.
+SYSTEM_PROMPT = """Eres un ingeniero QA senior experto en diseño de casos de prueba.
 
-The JSON structure must be:
+✅ 🔴 INSTRUCCION ABSOLUTAMENTE OBLIGATORIA: TODA TU RESPUESTA DEBE SER EXCLUSIVAMENTE EN IDIOMA ESPAÑOL.
+✅ NINGUNA PALABRA, TITULO, DESCRIPCION O TEXTO PUEDE ESTAR EN INGLES BAJO NINGUN CONCEPTO.
+✅ TODOS LOS CAMPOS DEL JSON, TODAS LAS DESCRIPCIONES, TODOS LOS MENSAJES DEBEN SER EN ESPAÑOL.
+
+Dada una historia de usuario o requisito, DEBES responder SOLAMENTE con un objeto JSON válido.
+Sin formato markdown, sin explicaciones, solo el JSON crudo.
+
+La estructura JSON debe ser:
 {
   "test_cases": [
     {
       "id": "TC-001",
       "title": "string",
-      "category": "happy_path | edge_case | negative | security | performance",
-      "priority": "high | medium | low",
+      "category": "happy_path | caso_limite | negativo | seguridad | rendimiento",
+      "priority": "alto | medio | bajo",
       "preconditions": ["string"],
       "steps": ["string"],
       "expected_result": "string",
-      "test_type": "functional | integration | ui | api"
+      "test_type": "funcional | integracion | ui | api"
     }
   ],
   "edge_scenarios": [
     {
       "id": "ES-001",
       "scenario": "string",
-      "risk_level": "high | medium | low",
+      "risk_level": "alto | medio | bajo",
       "description": "string"
     }
   ],
@@ -45,7 +53,7 @@ The JSON structure must be:
       "id": "BUG-001",
       "title": "string",
       "area": "string",
-      "likelihood": "high | medium | low",
+      "likelihood": "alto | medio | bajo",
       "description": "string",
       "suggested_test": "string"
     }
@@ -75,14 +83,17 @@ class GenerateResponse(BaseModel):
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_test_cases(req: GenerateRequest):
-    prompt = f"""User Story / Requirement:
+    prompt = f"""Historia de Usuario / Requisito:
 {req.user_story}
 
-Additional context:
-{req.context if req.context else 'None'}
+Contexto adicional:
+{req.context if req.context else 'Ninguno'}
 
-Generate comprehensive test cases, edge scenarios, and potential bugs for the above.
-Remember: respond ONLY with the raw JSON object."""
+✅ INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
+Ninguna palabra, descripcion, titulo o texto debe estar en ingles.
+
+Genera casos de prueba completos, escenarios limite y bugs potenciales para lo anterior.
+Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
 
     try:
         response = ollama.chat(
@@ -134,6 +145,13 @@ async def list_models():
     except Exception:
         return {"models": ["llama3.2", "mistral", "phi3"]}
 
+
+# Servir Frontend
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "../frontend/index.html"))
 
 @app.get("/health")
 async def health():
