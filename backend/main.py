@@ -61,7 +61,7 @@ The JSON structure must be:
 
 class GenerateRequest(BaseModel):
     user_story: str
-    model: str = "llama3.2"
+    model: str = "llama3:8b"
     context: str = ""
 
 
