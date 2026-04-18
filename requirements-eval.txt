@@ -1,0 +1,6 @@
+# Dependencias opcionales para el evaluador DeepEval
+# Instalar solo si vas a usar el botón "Evaluar con DeepEval"
+# Requiere Python <= 3.12 (grpcio no tiene wheel para 3.13 en Windows aún)
+#
+# Uso: pip install -r requirements-eval.txt
+deepeval==1.4.4
