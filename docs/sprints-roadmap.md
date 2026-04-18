@@ -436,25 +436,30 @@ Post-MVP
 
 ## Tabla de progreso
 
-| ID | Nombre | Estado | Sprint | Responsable |
-|----|--------|--------|--------|-------------|
-| F-01 | Exportar a Markdown | Pendiente | Sprint 1 | — |
-| F-02 | Filtrado por categoria y prioridad | Pendiente | Sprint 2 | — |
-| F-03 | Busqueda por texto en TC | Pendiente | Sprint 1 | — |
-| F-04 | Contador de tiempo de generacion | Pendiente | Sprint 1 | — |
-| F-05 | Health-check con estado Ollama real | Pendiente | Sprint 2 | — |
-| F-06 | Historial de sesiones con navegacion | Pendiente | Sprint 3 | — |
+| ID | Nombre | Estado | Sprint | Notas |
+|----|--------|--------|--------|-------|
+| F-01 | Exportar a Markdown | ✅ Completado | Sprint 1 | `downloadMarkdown()` en `app.js` |
+| F-02 | Filtrado por categoria y prioridad | ✅ Completado | Sprint 2 | `filterTC()` en `app.js`, chips dinamicos |
+| F-03 | Busqueda por texto en TC | ✅ Completado | Sprint 1 | `searchTC()` en `app.js` |
+| F-04 | Contador de tiempo de generacion | ✅ Completado | Sprint 1 | Timer integrado en streaming SSE |
+| F-05 | Health-check con estado Ollama real | ✅ Completado | Sprint 2 | `GET /health` devuelve `ollama: true/false` |
+| F-06 | Historial de sesiones con navegacion | ✅ Completado | Sprint 3 | `localStorage qaHistory` en `app.js` |
 | F-07 | Exportar a XLSX por categoria | Pendiente | Sprint 3 | — |
 | F-08 | Generacion por lotes | Pendiente | Sprint 5 | — |
 | F-09 | Regenerar un TC individual | Pendiente | Sprint 4 | — |
 | F-10 | Metricas adicionales en DeepEval | Pendiente | Sprint 4 | — |
-| F-11 | Templates de historias predefinidas | Pendiente | Sprint 1 | — |
+| F-11 | Templates de historias predefinidas | ✅ Completado | Sprint 1 | Objeto `TEMPLATES` con 8 entradas en `app.js` |
 | F-12 | Configuracion de categorias a incluir | Pendiente | Sprint 5 | — |
-| F-13 | Indicador de carga del modelo Ollama | Pendiente | Sprint 2 | — |
+| F-13 | Indicador de carga del modelo Ollama | ✅ Completado | Sprint 2 | `GET /model-status` + badge en sidebar |
 | F-14 | Modo claro / oscuro con toggle | Pendiente | Post-MVP | — |
-| F-15 | Comparador de dos generaciones | Pendiente | Post-MVP | — |
-| F-16 | Ajuste de temperatura desde la UI | Pendiente | Sprint 2 | — |
+| F-15 | Comparador de dos generaciones | Pendiente | Post-MVP | Requiere F-06 ✅ |
+| F-16 | Ajuste de temperatura desde la UI | ✅ Completado | Sprint 2 | Slider en sidebar, incluido en POST body |
 | F-17 | Persistencia en SQLite | Pendiente | Post-MVP | — |
 | F-18 | Integracion con Jira / GitHub Issues | Pendiente | Post-MVP | — |
 | F-19 | Evaluacion asincrona con polling | Pendiente | Post-MVP | — |
 | F-20 | CI con tests de integracion contra Ollama real | Pendiente | Post-MVP | — |
+| **A-01** | **Integracion Opik (trazas backend)** | **✅ Completado** | **Sprint Acad. 0** | `@opik.track` en `llm_service.py` |
+| **A-02** | **Notebook Corte 1 (prototipo + evidencias)** | Pendiente | Sprint Acad. 0 | `notebooks/corte1_prototipo.ipynb` |
+| **A-03** | **RAG Pipeline + ChromaDB** | Pendiente | Sprint Acad. 1 | `backend/services/rag_service.py` |
+| **A-04** | **Agentes CrewAI (Generador + Revisor)** | Pendiente | Sprint Acad. 2 | `backend/services/agent_service.py` |
+| **A-05** | **Experimento formal (8-15 casos + Corte 2)** | Pendiente | Sprint Acad. 3 | `notebooks/corte2_evaluacion.ipynb` |
