@@ -4,7 +4,10 @@ import ollama
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from backend.schemas.models import GenerateRequest, GenerateResponse
+from backend.schemas.models import (
+    GenerateRequest, GenerateResponse,
+    AgentGenerateRequest, AgentGenerateResponse,
+)
 from backend.services.llm_service import generate_test_cases, stream_generate_test_cases
 
 router = APIRouter()
@@ -32,6 +35,41 @@ async def generate_stream(req: GenerateRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/generate/agents", response_model=AgentGenerateResponse)
+async def generate_agents(req: AgentGenerateRequest):
+    """Pipeline de 2 agentes CrewAI: Generador + Revisor de Calidad."""
+    try:
+        from backend.services.agent_service import run_agent_pipeline
+
+        rag_context = ""
+        if req.use_rag:
+            try:
+                from backend.services.rag_service import semantic_search
+                rag_context = semantic_search(req.user_story)
+            except Exception as exc:
+                logger.warning("RAG no disponible en /generate/agents: %s", exc)
+
+        return await run_agent_pipeline(req, rag_context)
+
+    except ollama.ResponseError as e:
+        raise HTTPException(status_code=503, detail=f"Error de Ollama: {str(e)}")
+    except Exception as e:
+        logger.error("Error en pipeline de agentes | %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error en agentes: {str(e)}")
+
+
+@router.get("/rag/status")
+async def rag_status():
+    """Verifica si el índice RAG está construido."""
+    try:
+        from backend.services.rag_service import is_index_built, _get_collection
+        built = is_index_built()
+        count = _get_collection().count() if built else 0
+        return {"built": built, "chunk_count": count}
+    except Exception as exc:
+        return {"built": False, "chunk_count": 0, "error": str(exc)}
 
 
 @router.get("/models")

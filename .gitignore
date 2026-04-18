@@ -8,3 +8,8 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+CLAUDE.md
+docs/*
+.venv/*
+.claude/*
+.claude

@@ -69,6 +69,28 @@ El sistema debe:
     <div class="section-label">Contexto adicional (opcional)</div>
     <textarea id="context" rows="3" placeholder="Ej: App móvil React Native, backend Node.js, PostgreSQL..."></textarea>
   </div>
+  <!-- Modo de generación -->
+  <div style="margin-top:10px;margin-bottom:4px">
+    <div class="section-label">Modo de generación</div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button id="modeStd" class="btn-sm mode-active" onclick="setAgentMode(false)" style="flex:1;padding:6px 0">Estándar</button>
+      <button id="modeAgents" class="btn-sm" onclick="setAgentMode(true)" style="flex:1;padding:6px 0">🤖 Agentes</button>
+    </div>
+    <div id="agentModeInfo" style="display:none;margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5">
+      Usa Agente Generador + Agente Revisor (CrewAI). Más lento (~2-4 min) pero con análisis de calidad.
+    </div>
+  </div>
+  <!-- RAG toggle -->
+  <div style="margin-top:10px;margin-bottom:10px">
+    <div class="section-label">Base de conocimiento QA</div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="ragToggle" disabled style="accent-color:var(--accent);width:15px;height:15px">
+      <span id="ragStatusLabel" style="color:var(--muted)">Verificando índice...</span>
+    </label>
+    <p style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+      Enriquece el prompt con buenas prácticas QA. Requiere ejecutar <code style="color:var(--accent2)">python scripts/build_index.py</code>
+    </p>
+  </div>
   <button class="btn-generate" id="generateBtn" onclick="generate()">
     <div class="spinner" id="spinner"></div>
     <span id="btnText">Generar casos de prueba</span>
@@ -112,6 +134,7 @@ El sistema debe:
     <div class="tab" onclick="switchTab('edge')" id="tab-edge">Edge Scenarios <span class="tab-count" id="cnt-edge">0</span></div>
     <div class="tab" onclick="switchTab('bugs')" id="tab-bugs">Potential Bugs <span class="tab-count" id="cnt-bugs">0</span></div>
     <div class="tab" onclick="switchTab('coverage')" id="tab-coverage">Coverage</div>
+    <div class="tab" onclick="switchTab('agents')" id="tab-agents">🤖 Agentes</div>
   </div>
   <div class="export-bar" id="exportBar">
     <span class="export-label">Exportar</span>
@@ -162,6 +185,10 @@ El sistema debe:
   <div class="panel" id="panel-coverage">
     <div class="empty" id="empty-cov"><div class="empty-icon">📊</div><p>El análisis de cobertura aparecerá aquí</p></div>
     <div id="cov-content" style="display:none"></div>
+  </div>
+  <div class="panel" id="panel-agents">
+    <div class="empty" id="empty-agents"><div class="empty-icon">🤖</div><p>Activa el modo Agentes y genera para ver<br>la traza del Generador y el Revisor</p></div>
+    <div id="agent-trace-list" style="display:none"></div>
   </div>
 </main>
 

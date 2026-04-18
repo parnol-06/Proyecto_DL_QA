@@ -232,10 +232,38 @@ function filterTC(type, value) {
   });
 }
 
-// ── Generate (streaming)
+// ── Modo: estándar vs agentes
+let _agentMode = false;
+
+function setAgentMode(on) {
+  _agentMode = on;
+  document.getElementById('modeStd').classList.toggle('mode-active', !on);
+  document.getElementById('modeAgents').classList.toggle('mode-active', on);
+  const agentInfo = document.getElementById('agentModeInfo');
+  if (agentInfo) agentInfo.style.display = on ? 'block' : 'none';
+}
+
+// ── RAG status check
+async function checkRagStatus() {
+  try {
+    const res = await fetch(API + '/rag/status');
+    const { built, chunk_count } = await res.json();
+    const label = document.getElementById('ragStatusLabel');
+    const cb    = document.getElementById('ragToggle');
+    if (label) {
+      label.textContent = built ? `Base QA (${chunk_count} chunks)` : 'Índice no construido';
+      label.style.color = built ? 'var(--green)' : 'var(--muted)';
+    }
+    if (cb) cb.disabled = !built;
+  } catch { /* silencioso */ }
+}
+
+// ── Generate (streaming — modo estándar)
 async function generate() {
   const story = document.getElementById('userStory').value.trim();
   if (!story) { showToast('Escribe una historia de usuario primero', 'var(--amber)'); return; }
+
+  if (_agentMode) { return generateAgents(); }
 
   const btn     = document.getElementById('generateBtn');
   const spinner = document.getElementById('spinner');
@@ -255,15 +283,18 @@ async function generate() {
     document.getElementById('btnText').textContent = 'Generando... ' + s + 's';
   }, 1000);
 
+  const useRag = document.getElementById('ragToggle')?.checked ?? false;
+
   try {
     const res = await fetch(API + '/generate/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_story: story,
-        model:   document.getElementById('modelSelect').value,
-        context: document.getElementById('context').value,
+        model:       document.getElementById('modelSelect').value,
+        context:     document.getElementById('context').value,
         temperature: parseFloat(document.getElementById('tempSlider').value),
+        use_rag:     useRag,
       }),
     });
 
@@ -296,7 +327,8 @@ async function generate() {
             hideStreamPreview();
             renderResult(data);
             const elapsed = Math.round((Date.now() - _t0) / 1000);
-            showToast(`${(data.test_cases||[]).length} casos generados en ${elapsed}s`);
+            const ragTag = useRag ? ' · RAG' : '';
+            showToast(`${(data.test_cases||[]).length} casos generados en ${elapsed}s${ragTag}`);
             document.getElementById('evaluateBtn').disabled = false;
           } else if (msg.error) {
             throw new Error(msg.error);
@@ -316,6 +348,107 @@ async function generate() {
     spinner.style.display = 'none';
     btnText.textContent   = 'Generar casos de prueba';
   }
+}
+
+// ── Generate con agentes CrewAI
+async function generateAgents() {
+  const story = document.getElementById('userStory').value.trim();
+
+  const btn     = document.getElementById('generateBtn');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btnText');
+  btn.disabled  = true;
+  spinner.style.display = 'block';
+  document.getElementById('evaluateBtn').disabled = true;
+
+  const _t0 = Date.now();
+  let _timerInterval;
+  const steps = ['Agente Generador iniciando...', 'Generando suite de test cases...', 'Agente Revisor analizando...', 'Revisando cobertura y calidad...'];
+  let _stepIdx = 0;
+  btnText.textContent = steps[0];
+  switchTab('tc');
+  showStreamPreview();
+  document.getElementById('streamText').textContent = 'Los agentes están trabajando... esto puede tomar 2-4 minutos.';
+
+  _timerInterval = setInterval(() => {
+    const s = Math.round((Date.now() - _t0) / 1000);
+    _stepIdx = Math.min(Math.floor(s / 30), steps.length - 1);
+    btnText.textContent = steps[_stepIdx] + ' ' + s + 's';
+  }, 1000);
+
+  const useRag = document.getElementById('ragToggle')?.checked ?? false;
+
+  try {
+    const res = await fetch(API + '/generate/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_story:  story,
+        model:       document.getElementById('modelSelect').value,
+        context:     document.getElementById('context').value,
+        temperature: parseFloat(document.getElementById('tempSlider').value),
+        use_rag:     useRag,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Error en agentes');
+    }
+
+    const result = await res.json();
+    data = result;
+    localStorage.setItem('lastResult', JSON.stringify(data));
+    hideStreamPreview();
+    renderResult(data);
+
+    // Mostrar traza de agentes si existe
+    if (result.agent_trace && result.agent_trace.length) {
+      renderAgentTrace(result.agent_trace, result.used_fallback);
+    }
+
+    const elapsed = Math.round((Date.now() - _t0) / 1000);
+    const fallbackTag = result.used_fallback ? ' (fallback)' : '';
+    showToast(`${(data.test_cases||[]).length} casos generados por agentes en ${elapsed}s${fallbackTag}`);
+    document.getElementById('evaluateBtn').disabled = false;
+
+  } catch (e) {
+    hideStreamPreview();
+    showToast('Error en agentes: ' + e.message, 'var(--red)');
+  } finally {
+    clearInterval(_timerInterval);
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent   = 'Generar casos de prueba';
+  }
+}
+
+// ── Render traza de agentes
+function renderAgentTrace(traces, usedFallback) {
+  const panel = document.getElementById('panel-agents');
+  const empty = document.getElementById('empty-agents');
+  if (!panel) return;
+
+  if (empty) empty.style.display = 'none';
+  const container = document.getElementById('agent-trace-list');
+  if (!container) return;
+
+  container.style.display = 'block';
+  const fallbackBanner = usedFallback
+    ? '<div style="background:var(--amber);color:#000;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:12px">⚠ CrewAI falló — se usó generación directa como fallback</div>'
+    : '';
+
+  container.innerHTML = fallbackBanner + traces.map(t => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-weight:600;color:var(--accent2)">🤖 ${t.agent}</span>
+        <span style="font-size:11px;color:var(--muted)">${t.elapsed_s}s</span>
+      </div>
+      <p style="font-size:13px;color:var(--text);margin:0">${t.summary}</p>
+    </div>
+  `).join('');
+
+  switchTab('agents');
 }
 
 // ── Evaluate (DeepEval real)
@@ -361,7 +494,9 @@ async function evaluate() {
 
 // ── Init
 loadModels();
+checkRagStatus();
 setInterval(loadModels, 30000);
+setInterval(checkRagStatus, 60000);
 const saved = localStorage.getItem('lastResult');
 if (saved) {
   try {

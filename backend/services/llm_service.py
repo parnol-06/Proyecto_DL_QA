@@ -1,17 +1,35 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 
 import ollama
 
-from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE
+from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_PROJECT_NAME
 from backend.schemas.models import GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
 
 _llm_semaphore = asyncio.Semaphore(1)
+
+# ── Opik (observabilidad) ────────────────────────────────────────────────────
+# El SDK de Opik lee OPIK_API_KEY y OPIK_PROJECT_NAME directamente de os.environ
+# (load_dotenv en config.py ya las cargó). No se llama a opik.configure() para
+# evitar prompts interactivos cuando ya existe una config guardada.
+_OPIK_ENABLED = False
+try:
+    import opik
+    _OPIK_ENABLED = bool(OPIK_API_KEY)
+    if _OPIK_ENABLED:
+        logger.info("Opik disponible | proyecto=%s", OPIK_PROJECT_NAME)
+    else:
+        logger.warning("OPIK_API_KEY no definida — trazas deshabilitadas")
+except ImportError:
+    logger.warning("Paquete 'opik' no instalado — trazas deshabilitadas")
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """Eres un ingeniero QA senior EXPERTO con 15 años de experiencia. Tu trabajo es ser EXTREMADAMENTE DETALLISTA y minucioso.
 
@@ -69,13 +87,18 @@ La estructura JSON debe ser:
 }"""
 
 
-def _build_prompt(req: GenerateRequest) -> str:
+def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
+    rag_section = (
+        f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA (usa esta información para enriquecer los casos):\n"
+        f"{rag_context}\n"
+        if rag_context else ""
+    )
     return f"""Historia de Usuario / Requisito:
 {req.user_story}
 
 Contexto adicional:
 {req.context if req.context else 'Ninguno'}
-
+{rag_section}
 INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
 Ninguna palabra, descripcion, titulo o texto debe estar en ingles.
 
@@ -109,18 +132,65 @@ def _parse_llm_output(content: str) -> dict:
             raise
 
 
+def _build_response(data: dict, raw_story: str) -> GenerateResponse:
+    return GenerateResponse(
+        test_cases=data.get("test_cases", []),
+        edge_scenarios=data.get("edge_scenarios", []),
+        potential_bugs=data.get("potential_bugs", []),
+        coverage_summary=data.get("coverage_summary", {
+            "total_test_cases": len(data.get("test_cases", [])),
+            "categories_covered": [],
+            "estimated_coverage_percent": 75,
+            "missing_areas": [],
+        }),
+        raw_story=raw_story,
+    )
+
+
 async def stream_generate_test_cases(req: GenerateRequest):
     """Async generator que emite tokens SSE y al final el resultado JSON completo."""
     accumulated = ""
+    opik_trace = None
+    elapsed = 0.0
+
+    # Recuperar contexto RAG si está habilitado
+    rag_context = ""
+    if req.use_rag:
+        try:
+            from backend.services.rag_service import semantic_search
+            rag_context = semantic_search(req.user_story)
+            if rag_context:
+                logger.info("RAG: contexto recuperado (%d chars)", len(rag_context))
+        except Exception as exc:
+            logger.warning("RAG no disponible: %s", exc)
+
+    # Iniciar traza Opik antes del streaming
+    if _OPIK_ENABLED:
+        try:
+            _client = opik.Opik()
+            opik_trace = _client.trace(
+                name="stream_generate_test_cases",
+                input={
+                    "user_story": req.user_story[:400],
+                    "model": req.model,
+                    "temperature": req.temperature,
+                    "use_rag": req.use_rag,
+                    "rag_context_chars": len(rag_context),
+                },
+                project_name=OPIK_PROJECT_NAME,
+            )
+        except Exception as exc:
+            logger.warning("Error iniciando traza Opik: %s", exc)
+
     async with _llm_semaphore:
-        logger.info("Iniciando streaming | modelo=%s", req.model)
+        logger.info("Iniciando streaming | modelo=%s | rag=%s", req.model, bool(rag_context))
         t0 = time.monotonic()
 
         for chunk in ollama.chat(
             model=req.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(req)},
+                {"role": "user", "content": _build_prompt(req, rag_context)},
             ],
             options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7},
             stream=True,
@@ -133,54 +203,60 @@ async def stream_generate_test_cases(req: GenerateRequest):
         elapsed = time.monotonic() - t0
         logger.info("Stream completo | modelo=%s | tiempo=%.2fs", req.model, elapsed)
 
+    # Cerrar traza Opik con output y latencia
+    if opik_trace:
+        try:
+            opik_trace.end(output={
+                "output_length_chars": len(accumulated),
+                "elapsed_seconds": round(elapsed, 2),
+                "preview": accumulated[:300],
+            })
+        except Exception as exc:
+            logger.warning("Error cerrando traza Opik: %s", exc)
+
     try:
         data = _parse_llm_output(accumulated)
-        result = GenerateResponse(
-            test_cases=data.get("test_cases", []),
-            edge_scenarios=data.get("edge_scenarios", []),
-            potential_bugs=data.get("potential_bugs", []),
-            coverage_summary=data.get("coverage_summary", {
-                "total_test_cases": len(data.get("test_cases", [])),
-                "categories_covered": [],
-                "estimated_coverage_percent": 75,
-                "missing_areas": [],
-            }),
-            raw_story=req.user_story,
-        )
+        result = _build_response(data, req.user_story)
         yield f"data: {json.dumps({'result': result.model_dump()})}\n\n"
     except Exception as e:
         logger.error("Error parseando stream | %s", str(e))
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
+if _OPIK_ENABLED:
+    @opik.track(name="generate_test_cases", project_name=OPIK_PROJECT_NAME)
+    def _tracked_ollama_call(user_story: str, model: str, messages: list, options: dict) -> str:
+        response = ollama.chat(model=model, messages=messages, options=options)
+        return response["message"]["content"]
+else:
+    def _tracked_ollama_call(user_story: str, model: str, messages: list, options: dict) -> str:
+        response = ollama.chat(model=model, messages=messages, options=options)
+        return response["message"]["content"]
+
+
 async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
+    rag_context = ""
+    if req.use_rag:
+        try:
+            from backend.services.rag_service import semantic_search
+            rag_context = semantic_search(req.user_story)
+        except Exception as exc:
+            logger.warning("RAG no disponible: %s", exc)
+
     async with _llm_semaphore:
-        logger.info("Iniciando generación | modelo=%s", req.model)
+        logger.info("Iniciando generación | modelo=%s | rag=%s", req.model, bool(rag_context))
         t0 = time.monotonic()
 
-        response = ollama.chat(
-            model=req.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(req)},
-            ],
-            options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7},
-        )
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_prompt(req, rag_context)},
+        ]
+        options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7}
+
+        content = _tracked_ollama_call(req.user_story[:400], req.model, messages, options)
 
         elapsed = time.monotonic() - t0
         logger.info("Respuesta recibida | modelo=%s | tiempo=%.2fs", req.model, elapsed)
 
-    data = _parse_llm_output(response["message"]["content"])
-
-    return GenerateResponse(
-        test_cases=data.get("test_cases", []),
-        edge_scenarios=data.get("edge_scenarios", []),
-        potential_bugs=data.get("potential_bugs", []),
-        coverage_summary=data.get("coverage_summary", {
-            "total_test_cases": len(data.get("test_cases", [])),
-            "categories_covered": [],
-            "estimated_coverage_percent": 75,
-            "missing_areas": [],
-        }),
-        raw_story=req.user_story,
-    )
+    data = _parse_llm_output(content)
+    return _build_response(data, req.user_story)
