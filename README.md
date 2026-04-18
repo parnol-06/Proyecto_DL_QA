@@ -22,7 +22,7 @@
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Descargar modelo
-ollama pull llama3.2
+ollama pull llama3.8B
 # o
 ollama pull mistral
 ```
@@ -107,16 +107,6 @@ POST /generate
   "context": "App web de e-commerce"
 }
 ```
-
----
-
-## Ideas de extensión
-
-- [ ] Exportar casos a JIRA / TestRail via API
-- [ ] Generar código de test automatizado (Pytest, Cypress)
-- [ ] Historial de generaciones con comparación de métricas
-- [ ] Fine-tuning del modelo con casos de prueba propios
-
 ---
 
 ## Copyright
