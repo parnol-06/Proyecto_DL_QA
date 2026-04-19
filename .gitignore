@@ -13,3 +13,5 @@ docs/*
 .venv/*
 .claude/*
 .claude
+chroma_db/
+experiments/results.json

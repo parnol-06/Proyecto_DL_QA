@@ -492,6 +492,56 @@ async function evaluate() {
   }
 }
 
+// ── Export XLSX (F-07)
+function downloadXLSX() {
+  if (!data || typeof XLSX === 'undefined') {
+    showToast('XLSX no disponible', 'var(--red)'); return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // Hoja 1: Test Cases
+  const tcRows = (data.test_cases || []).map(tc => ({
+    ID: tc.id || '',
+    Título: tc.title || '',
+    Categoría: tc.category || '',
+    Prioridad: tc.priority || '',
+    'Tipo de prueba': tc.test_type || '',
+    Precondiciones: (tc.preconditions || []).join(' | '),
+    Pasos: (tc.steps || []).join(' | '),
+    'Resultado esperado': tc.expected_result || '',
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tcRows.length ? tcRows : [{}]), 'Test Cases');
+
+  // Hoja 2: Edge Scenarios
+  const edgeRows = (data.edge_scenarios || []).map(e => ({
+    ID: e.id || '', Escenario: e.scenario || '',
+    'Nivel de riesgo': e.risk_level || '', Descripción: e.description || '',
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(edgeRows.length ? edgeRows : [{}]), 'Edge Scenarios');
+
+  // Hoja 3: Potential Bugs
+  const bugRows = (data.potential_bugs || []).map(b => ({
+    ID: b.id || '', Título: b.title || '', Área: b.area || '',
+    Probabilidad: b.likelihood || '', Descripción: b.description || '',
+    'Test sugerido': b.suggested_test || '',
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bugRows.length ? bugRows : [{}]), 'Potential Bugs');
+
+  // Hoja 4: Coverage Summary
+  const cov = data.coverage_summary || {};
+  const covRows = [
+    { Métrica: 'Total casos', Valor: cov.total_test_cases ?? '' },
+    { Métrica: 'Categorías cubiertas', Valor: (cov.categories_covered || []).join(', ') },
+    { Métrica: 'Cobertura estimada (%)', Valor: cov.estimated_coverage_percent ?? '' },
+    { Métrica: 'Áreas faltantes', Valor: (cov.missing_areas || []).join(', ') },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(covRows), 'Coverage');
+
+  XLSX.writeFile(wb, 'test-cases.xlsx');
+  showToast('XLSX exportado correctamente');
+}
+
 // ── Init
 loadModels();
 checkRagStatus();

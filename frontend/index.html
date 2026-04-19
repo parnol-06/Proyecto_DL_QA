@@ -142,6 +142,7 @@ El sistema debe:
     <button class="btn-export" onclick="downloadJSON()">⬇ JSON</button>
     <button class="btn-export" onclick="downloadCSV()">⬇ CSV</button>
     <button class="btn-export" onclick="downloadMarkdown()">⬇ MD</button>
+    <button class="btn-export" onclick="downloadXLSX()">⬇ XLSX</button>
   </div>
   <div class="panel active" id="panel-tc">
     <div class="stream-preview" id="streamPreview">
@@ -199,6 +200,7 @@ El sistema debe:
   <span>© 2026 Arnol Ferney Pérez & Jesus Andres Cabezas</span>
 </footer>
 
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="/static/js/api.js"></script>
 <script src="/static/js/render.js"></script>
 <script src="/static/js/app.js"></script>
