@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from backend.schemas.models import (
     GenerateRequest, GenerateResponse,
     AgentGenerateRequest, AgentGenerateResponse,
+    RegenerateTCRequest,
 )
 from backend.services.llm_service import generate_test_cases, stream_generate_test_cases
 
@@ -58,6 +59,39 @@ async def generate_agents(req: AgentGenerateRequest):
     except Exception as e:
         logger.error("Error en pipeline de agentes | %s", str(e))
         raise HTTPException(status_code=500, detail=f"Error en agentes: {str(e)}")
+
+
+@router.post("/regenerate-tc")
+async def regenerate_tc(req: RegenerateTCRequest):
+    """Regenera un único caso de prueba conservando su ID y categoría."""
+    import ollama as _ollama
+    from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE
+    import json, re
+
+    cat_hint = f" Genera exactamente 1 caso de prueba de categoría '{req.category}'." if req.category else " Genera exactamente 1 caso de prueba."
+    prompt = (
+        f"Historia de usuario:\n{req.user_story}\n\n"
+        f"Contexto: {req.context or 'Ninguno'}\n\n"
+        f"INSTRUCCIÓN:{cat_hint} Mantén el ID {req.tc_id}. "
+        "Responde SOLO con el objeto JSON del caso:\n"
+        '{"id":"...","title":"...","category":"...","priority":"alto|medio|bajo",'
+        '"preconditions":["..."],"steps":["..."],"expected_result":"...","test_type":"..."}'
+    )
+    try:
+        resp = _ollama.chat(
+            model=req.model,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE},
+        )
+        content = resp["message"]["content"]
+        match = re.search(r"\{[\s\S]*\}", content)
+        if not match:
+            raise ValueError("El modelo no devolvió un JSON válido")
+        tc = json.loads(match.group())
+        tc["id"] = req.tc_id
+        return {"test_case": tc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/rag/status")

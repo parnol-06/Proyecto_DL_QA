@@ -437,6 +437,25 @@ svg.ring text { font-family: var(--font-head); }
 }
 .btn-clear:hover { border-color: var(--red); opacity: 1; background: rgba(248,113,113,0.06); }
 
+/* ── Regenerar TC (F-09) ── */
+.btn-regen {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 2px 7px; font-size: 13px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s; margin-left: auto; flex-shrink: 0;
+}
+.btn-regen:hover { color: var(--accent2); border-color: var(--accent2); }
+.btn-regen:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ── Categorías checkboxes (F-12) ── */
+.cat-check {
+  display: flex; align-items: center; gap: 4px; font-size: 11px;
+  color: var(--muted2); cursor: pointer; user-select: none;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 8px; transition: border-color 0.15s;
+}
+.cat-check:hover { border-color: var(--accent2); color: var(--text); }
+.cat-check input { accent-color: var(--accent); width: 12px; height: 12px; }
+
 /* ── Metric label estimado ── */
 .metric-label-note { font-size: 9px; color: var(--muted); font-style: italic; }
 

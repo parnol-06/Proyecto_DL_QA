@@ -1,4 +1,6 @@
 services:
+
+  # ── Ollama (LLM local) ──────────────────────────────────────────────────────
   ollama:
     image: ollama/ollama
     ports:
@@ -7,12 +9,13 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
       interval: 10s
       timeout: 10s
-      retries: 15
+      retries: 20
       start_period: 30s
 
+  # ── App (FastAPI) ───────────────────────────────────────────────────────────
   app:
     build: .
     ports:
@@ -22,8 +25,17 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
+      # Apuntar a Ollama dentro del compose network
       - OLLAMA_HOST=http://ollama:11434
+      # Opik — se leen del .env pero se sobreescriben aquí si fuera necesario
+      - OPIK_API_KEY=${OPIK_API_KEY}
+      - OPIK_WORKSPACE=${OPIK_WORKSPACE}
+      - OPIK_PROJECT_NAME=${OPIK_PROJECT_NAME}
+    volumes:
+      # Vector store RAG persistente (no se pierde al recrear el contenedor)
+      - chroma_data:/app/chroma_db
     restart: unless-stopped
 
 volumes:
   ollama_data:
+  chroma_data:

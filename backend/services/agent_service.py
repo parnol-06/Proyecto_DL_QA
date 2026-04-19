@@ -13,18 +13,20 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.config import OPIK_API_KEY, OPIK_PROJECT_NAME
+from backend.config import OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
 from backend.schemas.models import AgentGenerateRequest, AgentGenerateResponse, AgentTrace
 from backend.services.llm_service import _parse_llm_output, _build_response
 
 logger = logging.getLogger(__name__)
 
-# ── Opik (reutiliza la misma configuración que llm_service) ───────────────────
+# ── Opik ─────────────────────────────────────────────────────────────────────
 _OPIK_ENABLED = False
 try:
     import opik
-    _OPIK_ENABLED = bool(OPIK_API_KEY)
-except ImportError:
+    if OPIK_API_KEY:
+        opik.configure(api_key=OPIK_API_KEY, workspace=OPIK_WORKSPACE or None, force=True)
+        _OPIK_ENABLED = True
+except Exception:
     pass
 
 # ── Executor para correr CrewAI (síncrono) desde código async ─────────────────

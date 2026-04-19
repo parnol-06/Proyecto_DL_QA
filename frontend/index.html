@@ -91,6 +91,19 @@ El sistema debe:
       Enriquece el prompt con buenas prácticas QA. Requiere ejecutar <code style="color:var(--accent2)">python scripts/build_index.py</code>
     </p>
   </div>
+  <!-- Categorías (F-12) -->
+  <div style="margin-top:10px;margin-bottom:10px">
+    <div class="section-label" style="margin-bottom:6px">Categorías a generar</div>
+    <div id="catChecks" style="display:flex;flex-wrap:wrap;gap:5px">
+      <label class="cat-check"><input type="checkbox" value="happy_path" checked> Happy Path</label>
+      <label class="cat-check"><input type="checkbox" value="caso_limite" checked> Caso Límite</label>
+      <label class="cat-check"><input type="checkbox" value="negativo" checked> Negativo</label>
+      <label class="cat-check"><input type="checkbox" value="seguridad" checked> Seguridad</label>
+      <label class="cat-check"><input type="checkbox" value="rendimiento" checked> Rendimiento</label>
+      <label class="cat-check"><input type="checkbox" value="usabilidad" checked> Usabilidad</label>
+      <label class="cat-check"><input type="checkbox" value="compatibilidad" checked> Compatibilidad</label>
+    </div>
+  </div>
   <button class="btn-generate" id="generateBtn" onclick="generate()">
     <div class="spinner" id="spinner"></div>
     <span id="btnText">Generar casos de prueba</span>
@@ -99,6 +112,7 @@ El sistema debe:
   <button class="btn-evaluate" id="evaluateBtn" onclick="evaluate()" disabled>
     <span>◈</span> Evaluar con DeepEval
   </button>
+  <button class="btn-evaluate btn-batch" id="batchBtn" onclick="generateBatch()" style="background:var(--surface2);border:1px solid var(--border);margin-top:4px">⊞ Modo lote (sep. con ---)</button>
   <button class="btn-clear" onclick="clearAll()">✕ Limpiar resultados</button>
   <div>
     <div class="section-label">DeepEval Metrics</div>
@@ -117,6 +131,16 @@ El sistema debe:
         <span class="metric-name">Consistency</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-con" style="background:var(--accent2)"></div></div>
         <span class="metric-score" id="score-con" style="color:var(--muted)">—</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-name">Specificity</span>
+        <div class="metric-bar-wrap"><div class="metric-bar" id="bar-spe" style="background:var(--amber)"></div></div>
+        <span class="metric-score" id="score-spe" style="color:var(--muted)">—</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-name">NF Balance</span>
+        <div class="metric-bar-wrap"><div class="metric-bar" id="bar-nfb" style="background:#e879a0"></div></div>
+        <span class="metric-score" id="score-nfb" style="color:var(--muted)">—</span>
       </div>
     </div>
     <p id="metrics-note" style="display:none;font-size:10px;color:var(--amber);margin-top:8px;line-height:1.5">

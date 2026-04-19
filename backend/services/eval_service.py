@@ -41,6 +41,8 @@ async def run_evaluation(req: EvaluateRequest) -> EvaluateResponse:
         coverage=score("Test Coverage"),
         relevancy=score("Test Relevancy"),
         consistency=score("Test Consistency"),
+        specificity=score("Step Specificity"),
+        nonfunctional_balance=score("Non-Functional Balance"),
         overall=round(raw.get("overall_score", 0.0), 3),
         model_used=raw.get("model_used", f"ollama/{req.model}"),
     )

@@ -29,7 +29,7 @@ function renderTC(tcs) {
   document.getElementById('cnt-tc').textContent = tcs.length;
 
   list.innerHTML = tcs.map((tc, i) => `
-    <div class="tc-card" id="tc-${i}" data-category="${tc.category || ''}" data-priority="${tc.priority || ''}">
+    <div class="tc-card" id="tc-${i}" data-category="${tc.category || ''}" data-priority="${tc.priority || ''}" data-tcid="${tc.id || ''}">
       <div class="tc-header" onclick="toggleCard(${i})">
         <span class="tc-id">${tc.id || 'TC-' + String(i+1).padStart(3,'0')}</span>
         <span class="tc-title">${tc.title}</span>
@@ -37,6 +37,7 @@ function renderTC(tcs) {
           <span class="badge ${catBadge(tc.category)}">${catLabel(tc.category)}</span>
           <span class="badge badge-${tc.priority}">${tc.priority}</span>
         </div>
+        <button class="btn-regen" title="Regenerar este caso" onclick="event.stopPropagation();regenerateTC(${i},'${tc.id || ''}','${tc.category || ''}')">⟳</button>
         <span class="badge-chevron">▾</span>
       </div>
       <div class="tc-body">

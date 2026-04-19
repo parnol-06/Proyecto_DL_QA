@@ -8,5 +8,6 @@ OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.25"))
 OLLAMA_CONTEXT_SIZE = int(os.getenv("OLLAMA_CONTEXT_SIZE", "8192"))
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 
-OPIK_API_KEY = os.getenv("OPIK_API_KEY", "")
-OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "QA-Test-Generator")
+OPIK_API_KEY     = os.getenv("OPIK_API_KEY", "")
+OPIK_WORKSPACE   = os.getenv("OPIK_WORKSPACE", "")
+OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "Qa_trace")

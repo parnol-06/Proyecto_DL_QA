@@ -232,6 +232,12 @@ function filterTC(type, value) {
   });
 }
 
+// ── Categorías seleccionadas (F-12)
+function getSelectedCategories() {
+  return [...document.querySelectorAll('#catChecks input[type=checkbox]:checked')]
+    .map(cb => cb.value);
+}
+
 // ── Modo: estándar vs agentes
 let _agentMode = false;
 
@@ -290,11 +296,12 @@ async function generate() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_story: story,
+        user_story:  story,
         model:       document.getElementById('modelSelect').value,
         context:     document.getElementById('context').value,
         temperature: parseFloat(document.getElementById('tempSlider').value),
         use_rag:     useRag,
+        categories:  getSelectedCategories(),
       }),
     });
 
@@ -388,6 +395,7 @@ async function generateAgents() {
         context:     document.getElementById('context').value,
         temperature: parseFloat(document.getElementById('tempSlider').value),
         use_rag:     useRag,
+        categories:  getSelectedCategories(),
       }),
     });
 
@@ -482,6 +490,8 @@ async function evaluate() {
     setMetric('cov', scores.coverage);
     setMetric('rel', scores.relevancy);
     setMetric('con', scores.consistency);
+    if (scores.specificity)         setMetric('spe', scores.specificity);
+    if (scores.nonfunctional_balance) setMetric('nfb', scores.nonfunctional_balance);
     showToast(`Evaluación completa · overall ${scores.overall.toFixed(2)}`);
 
   } catch (e) {
@@ -490,6 +500,126 @@ async function evaluate() {
     btn.disabled = false;
     btn.querySelector('span').textContent = '◈';
   }
+}
+
+// ── Regenerar TC individual (F-09)
+async function regenerateTC(cardIndex, tcId, category) {
+  const story = document.getElementById('userStory').value.trim();
+  if (!story) { showToast('Necesitas una historia de usuario', 'var(--amber)'); return; }
+
+  const card = document.getElementById('tc-' + cardIndex);
+  const btn  = card?.querySelector('.btn-regen');
+  if (btn) { btn.textContent = '⟳'; btn.disabled = true; btn.style.opacity = '0.5'; }
+
+  try {
+    const res = await fetch(API + '/regenerate-tc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tc_id:       tcId,
+        user_story:  story,
+        model:       document.getElementById('modelSelect').value,
+        temperature: parseFloat(document.getElementById('tempSlider').value),
+        category:    category,
+        context:     document.getElementById('context').value,
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Error');
+    const { test_case } = await res.json();
+
+    // Actualizar en data global
+    if (data?.test_cases?.[cardIndex]) {
+      data.test_cases[cardIndex] = test_case;
+      localStorage.setItem('lastResult', JSON.stringify(data));
+    }
+
+    // Re-renderizar solo esa card
+    const newHtml = `
+      <div class="tc-card open" id="tc-${cardIndex}" data-category="${test_case.category||''}" data-priority="${test_case.priority||''}" data-tcid="${test_case.id||''}">
+        <div class="tc-header" onclick="toggleCard(${cardIndex})">
+          <span class="tc-id">${test_case.id||tcId}</span>
+          <span class="tc-title">${test_case.title}</span>
+          <div class="tc-badges">
+            <span class="badge">${(test_case.category||'').replace(/_/g,' ')}</span>
+            <span class="badge badge-${test_case.priority}">${test_case.priority}</span>
+          </div>
+          <button class="btn-regen" title="Regenerar este caso" onclick="event.stopPropagation();regenerateTC(${cardIndex},'${test_case.id||tcId}','${test_case.category||''}')">⟳</button>
+          <span class="badge-chevron">▾</span>
+        </div>
+        <div class="tc-body">
+          <div class="field-label">Precondiciones</div>
+          <ul class="steps-list">${(test_case.preconditions||[]).map(p=>`<li style="list-style:disc;padding-left:14px;color:var(--muted2);font-size:12.5px">${p}</li>`).join('')}</ul>
+          <div class="field-label">Pasos</div>
+          <ol class="steps-list">${(test_case.steps||[]).map(s=>`<li>${s}</li>`).join('')}</ol>
+          <div class="field-label">Resultado esperado</div>
+          <div class="field-value">${test_case.expected_result}</div>
+          <div class="field-label">Tipo</div>
+          <div class="field-value">${test_case.test_type||'functional'}</div>
+        </div>
+      </div>`;
+    card.outerHTML = newHtml;
+    showToast(`${tcId} regenerado`);
+  } catch (e) {
+    showToast('Error al regenerar: ' + e.message, 'var(--red)');
+    if (btn) { btn.textContent = '⟳'; btn.disabled = false; btn.style.opacity = ''; }
+  }
+}
+
+// ── Batch mode (F-08)
+async function generateBatch() {
+  const raw = document.getElementById('userStory').value.trim();
+  const stories = raw.split(/\n---+\n/).map(s => s.trim()).filter(s => s.length >= 20);
+  if (stories.length < 2) { showToast('Separa historias con "---" en línea propia', 'var(--amber)'); return; }
+
+  const btn     = document.getElementById('generateBtn');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btnText');
+  btn.disabled = true; spinner.style.display = 'block';
+  showToast(`Procesando ${stories.length} historias en lote...`, 'var(--cyan)');
+
+  const merged = { test_cases: [], edge_scenarios: [], potential_bugs: [], coverage_summary: {} };
+
+  for (let i = 0; i < stories.length; i++) {
+    btnText.textContent = `Historia ${i+1}/${stories.length}...`;
+    try {
+      const res = await fetch(API + '/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_story:  stories[i],
+          model:       document.getElementById('modelSelect').value,
+          context:     document.getElementById('context').value,
+          temperature: parseFloat(document.getElementById('tempSlider').value),
+          use_rag:     document.getElementById('ragToggle')?.checked ?? false,
+        }),
+      });
+      if (!res.ok) continue;
+      const r = await res.json();
+      const offset = merged.test_cases.length;
+      (r.test_cases||[]).forEach((tc, j) => {
+        tc.id = `B${i+1}-TC-${String(j+1).padStart(3,'0')}`;
+        merged.test_cases.push(tc);
+      });
+      (r.edge_scenarios||[]).forEach((e, j) => { e.id = `B${i+1}-ES-${String(j+1).padStart(3,'0')}`; merged.edge_scenarios.push(e); });
+      (r.potential_bugs||[]).forEach((b, j) => { b.id = `B${i+1}-BUG-${String(j+1).padStart(3,'0')}`; merged.potential_bugs.push(b); });
+    } catch { /* continúa con la siguiente */ }
+  }
+
+  const cats = [...new Set(merged.test_cases.map(tc => tc.category).filter(Boolean))];
+  merged.coverage_summary = {
+    total_test_cases: merged.test_cases.length,
+    categories_covered: cats,
+    estimated_coverage_percent: Math.min(95, 50 + merged.test_cases.length * 2),
+    missing_areas: [],
+  };
+
+  data = merged;
+  localStorage.setItem('lastResult', JSON.stringify(data));
+  renderResult(data);
+  document.getElementById('evaluateBtn').disabled = false;
+  btn.disabled = false; spinner.style.display = 'none';
+  btnText.textContent = 'Generar casos de prueba';
+  showToast(`Lote: ${merged.test_cases.length} TC de ${stories.length} historias`);
 }
 
 // ── Export XLSX (F-07)

@@ -96,6 +96,37 @@ def make_consistency_metric(model: DeepEvalBaseLLM) -> GEval:
     )
 
 
+def make_specificity_metric(model: DeepEvalBaseLLM) -> GEval:
+    """¿Los pasos de los test cases son específicos o genéricos?"""
+    return GEval(
+        name="Step Specificity",
+        criteria="""Evalúa si los pasos de cada caso de prueba son específicos y accionables.
+        Penaliza pasos genéricos como 'Ir a la página', 'Hacer clic en el botón', 'Verificar el resultado'.
+        Premia pasos que incluyen: datos concretos (valores, URLs, credenciales de prueba),
+        acciones precisas (campo exacto, botón nombrado), y condiciones medibles en el resultado esperado.
+        Puntúa 1-10, donde 10 es completamente específico y libre de pasos genéricos.""",
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        model=model,
+        threshold=0.6,
+    )
+
+
+def make_nonfunctional_balance_metric(model: DeepEvalBaseLLM) -> GEval:
+    """¿Hay un balance adecuado entre casos funcionales y no funcionales?"""
+    return GEval(
+        name="Non-Functional Balance",
+        criteria="""Evalúa si la suite de casos de prueba incluye un balance adecuado entre:
+        - Pruebas funcionales (happy_path, negativo, caso_limite)
+        - Pruebas no funcionales (rendimiento con métricas numéricas, seguridad con vector de ataque,
+          usabilidad con criterios de UX, compatibilidad con dispositivos/browsers)
+        Penaliza si los casos no funcionales tienen criterios vagos sin valores cuantitativos.
+        Puntúa 1-10, donde 10 significa ≥30% no funcionales con criterios medibles.""",
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        model=model,
+        threshold=0.55,
+    )
+
+
 # ─────────────────────────────────────────────
 # 3. Main evaluation runner
 # ─────────────────────────────────────────────
@@ -121,6 +152,8 @@ def evaluate_test_cases(
         make_coverage_metric(eval_model),
         make_relevancy_metric(eval_model),
         make_consistency_metric(eval_model),
+        make_specificity_metric(eval_model),
+        make_nonfunctional_balance_metric(eval_model),
     ]
 
     results = {}

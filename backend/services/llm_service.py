@@ -7,7 +7,7 @@ import time
 
 import ollama
 
-from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_PROJECT_NAME
+from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
 from backend.schemas.models import GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
@@ -15,19 +15,25 @@ logger = logging.getLogger(__name__)
 _llm_semaphore = asyncio.Semaphore(1)
 
 # ── Opik (observabilidad) ────────────────────────────────────────────────────
-# El SDK de Opik lee OPIK_API_KEY y OPIK_PROJECT_NAME directamente de os.environ
-# (load_dotenv en config.py ya las cargó). No se llama a opik.configure() para
-# evitar prompts interactivos cuando ya existe una config guardada.
+# force=True evita el prompt interactivo de confirmación de workspace.
+# Necesario para entornos sin TTY (Docker, CI).
 _OPIK_ENABLED = False
 try:
     import opik
-    _OPIK_ENABLED = bool(OPIK_API_KEY)
-    if _OPIK_ENABLED:
-        logger.info("Opik disponible | proyecto=%s", OPIK_PROJECT_NAME)
+    if OPIK_API_KEY:
+        opik.configure(
+            api_key=OPIK_API_KEY,
+            workspace=OPIK_WORKSPACE or None,
+            force=True,
+        )
+        _OPIK_ENABLED = True
+        logger.info("Opik configurado | workspace=%s | proyecto=%s", OPIK_WORKSPACE, OPIK_PROJECT_NAME)
     else:
         logger.warning("OPIK_API_KEY no definida — trazas deshabilitadas")
 except ImportError:
     logger.warning("Paquete 'opik' no instalado — trazas deshabilitadas")
+except Exception as exc:
+    logger.warning("Error configurando Opik: %s", exc)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -93,6 +99,11 @@ def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
         f"{rag_context}\n"
         if rag_context else ""
     )
+    cats = getattr(req, "categories", [])
+    all_cats = ["happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"]
+    active_cats = cats if cats else all_cats
+    cat_list = ", ".join(active_cats)
+
     return f"""Historia de Usuario / Requisito:
 {req.user_story}
 
@@ -102,11 +113,11 @@ Contexto adicional:
 INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
 Ninguna palabra, descripcion, titulo o texto debe estar en ingles.
 
+CATEGORIAS A GENERAR: {cat_list}
+Solo genera casos de prueba para las categorías listadas arriba. No uses otras categorías.
+
 Genera casos de prueba completos, escenarios limite y bugs potenciales para lo anterior.
-GENERA MINIMO 15 CASOS DE PRUEBA MINIMO.
-INCLUYE MINIMO 3 CASOS NO FUNCIONALES DE RENDIMIENTO.
-INCLUYE MINIMO 2 CASOS DE SEGURIDAD.
-INCLUYE MINIMO 2 CASOS DE USABILIDAD.
+GENERA MINIMO 12 CASOS DE PRUEBA.
 CADA CASO NO FUNCIONAL DEBE TENER VALORES NUMERICOS CONCRETOS Y MEDIBLES.
 CADA CASO DEBE TENER MINIMO 5 PASOS DETALLADOS Y ESPECIFICOS.
 Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""

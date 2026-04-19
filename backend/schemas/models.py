@@ -9,6 +9,7 @@ class GenerateRequest(BaseModel):
     context: str = Field("", max_length=1000)
     temperature: float = Field(0.25, ge=0.0, le=1.0, description="Temperatura del LLM (0.0–1.0)")
     use_rag: bool = Field(False, description="Enriquecer el prompt con contexto del corpus QA")
+    categories: list[str] = Field(default_factory=list, description="Categorías a generar; vacío = todas")
 
 
 class GenerateResponse(BaseModel):
@@ -31,6 +32,7 @@ class AgentGenerateRequest(BaseModel):
     context: str = Field("", max_length=1000)
     temperature: float = Field(0.25, ge=0.0, le=1.0)
     use_rag: bool = False
+    categories: list[str] = Field(default_factory=list)
 
 
 class AgentGenerateResponse(BaseModel):
@@ -43,6 +45,15 @@ class AgentGenerateResponse(BaseModel):
     used_fallback: bool = False
 
 
+class RegenerateTCRequest(BaseModel):
+    tc_id: str
+    user_story: str = Field(..., min_length=20, max_length=3000)
+    model: str = OLLAMA_MODEL
+    temperature: float = Field(0.25, ge=0.0, le=1.0)
+    category: str = ""
+    context: str = Field("", max_length=1000)
+
+
 class EvaluateRequest(BaseModel):
     requirement: str = Field(..., min_length=20, max_length=3000)
     generated_output: dict
@@ -53,5 +64,7 @@ class EvaluateResponse(BaseModel):
     coverage: float
     relevancy: float
     consistency: float
+    specificity: float = 0.0
+    nonfunctional_balance: float = 0.0
     overall: float
     model_used: str
