@@ -139,6 +139,8 @@ cp .env.example .env
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 
+reg add HKLM\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled /t REG_DWORD /d 1 /f #Ejecutar en PowerShell para darle permiso de rutas largas al programa
+
 pip install -r requirements.txt
 pip install -r requirements-eval.txt   # Necesario solo para evaluacion DeepEval
 ```
