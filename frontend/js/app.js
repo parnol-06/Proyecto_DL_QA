@@ -1,6 +1,7 @@
 let data = null;
 let _streamTokenCount = 0;
 let _streamCaseCount  = 0;
+let _streamBuf        = '';
 
 // ── UI helpers
 function switchTab(name) {
@@ -128,6 +129,7 @@ function downloadMarkdown() {
 function showStreamPreview() {
   _streamTokenCount = 0;
   _streamCaseCount  = 0;
+  _streamBuf        = '';
   document.getElementById('streamPreview').classList.add('visible');
   document.getElementById('streamText').textContent = 'Iniciando generación...';
   document.getElementById('empty-tc').style.display = 'none';
@@ -141,13 +143,14 @@ function hideStreamPreview() {
 
 function appendStreamToken(token) {
   _streamTokenCount++;
-  // Cuenta cuántos IDs de caso aparecen (patrones como "TC-001")
   const matches = token.match(/"id"\s*:\s*"TC-/g);
   if (matches) _streamCaseCount += matches.length;
 
-  const el = document.getElementById('streamText');
-  const cases = _streamCaseCount > 0 ? ` · ${_streamCaseCount} casos detectados` : '';
-  el.textContent = `Procesando respuesta del modelo... ${_streamTokenCount} tokens recibidos${cases}`;
+  _streamBuf += token;
+  const preview = _streamBuf.slice(-180).replace(/\s+/g, ' ');
+  const cases = _streamCaseCount > 0 ? ` · ${_streamCaseCount} casos` : '';
+  document.getElementById('streamText').textContent =
+    `${_streamTokenCount} tokens${cases} — ${preview}`;
 }
 
 // ── Search TC
@@ -328,11 +331,17 @@ async function generate() {
           const msg = JSON.parse(line.slice(6));
           if (msg.token !== undefined) {
             appendStreamToken(msg.token);
+          } else if (msg.case) {
+            if (!data) data = { test_cases: [], edge_scenarios: [], potential_bugs: [], coverage_summary: {} };
+            data.test_cases.push(msg.case);
+            appendTC(msg.case);
+            if (data.test_cases.length === 1) switchTab('tc');
           } else if (msg.result) {
             data = msg.result;
             localStorage.setItem('lastResult', JSON.stringify(data));
             hideStreamPreview();
-            renderResult(data);
+            const tcStreamed = (data.test_cases || []).length > 0 && document.querySelectorAll('#tc-list .tc-card').length > 0;
+            renderResult(data, tcStreamed);
             const elapsed = Math.round((Date.now() - _t0) / 1000);
             const ragTag = useRag ? ' · RAG' : '';
             showToast(`${(data.test_cases||[]).length} casos generados en ${elapsed}s${ragTag}`);
@@ -430,40 +439,37 @@ async function generateAgents() {
         try { msg = JSON.parse(line.slice(6)); } catch { continue; }
 
         if (msg.event === 'agent_start') {
-          // Actualizar preview con qué agente está corriendo
           _updateAgentProgress(msg.agent, msg.step, msg.total, 'procesando...');
           btnText.textContent = `${msg.agent} (${msg.step}/${msg.total})... ${Math.round((Date.now()-_t0)/1000)}s`;
+
+        } else if (msg.event === 'case') {
+          if (!data) data = { test_cases: [], edge_scenarios: [], potential_bugs: [], coverage_summary: {}, raw_story: story };
+          data.test_cases = data.test_cases || [];
+          data.test_cases.push(msg.case);
+          appendTC(msg.case);
+          if (data.test_cases.length === 1) { switchTab('tc'); hideStreamPreview(); showStreamPreview(); }
 
         } else if (msg.event === 'agent_done') {
           agentTraces.push({ agent: msg.agent, elapsed_s: msg.elapsed_s, summary: msg.summary });
           _updateAgentProgress(msg.agent, msg.step, msg.total, `✓ ${msg.summary}`);
 
-          // Renderizar test cases en cuanto el Generador termina (sin esperar Revisor/Optimizador)
-          if (msg.agent === 'Generador' && msg.data?.test_cases?.length) {
-            data = { ...msg.data, raw_story: story };
+          if (msg.agent === 'Generador') {
+            // Los casos ya se mostraron uno a uno vía eventos 'case'; solo actualizamos data
+            data = { ...(data || {}), ...msg.data, raw_story: story };
             localStorage.setItem('lastResult', JSON.stringify(data));
-            hideStreamPreview();
-            renderResult(data);
-            showToast(`${msg.data.test_cases.length} casos listos · Revisor analizando...`, 'var(--cyan)');
-            switchTab('tc');
-            showStreamPreview();
+            showToast(`${(msg.data?.test_cases||[]).length} casos listos · Revisor analizando...`, 'var(--cyan)');
           }
 
-          // Mostrar resultado parcial del Revisor en panel de agentes
           if (msg.agent === 'Revisor') {
             renderAgentTrace(agentTraces, false, null);
-          }
-
-          // Fusionar casos del Optimizador cuando termina
-          if (msg.agent === 'Optimizador' && msg.data?.added_cases?.length) {
-            mergeOptimizerCases(msg.data.added_cases);
           }
 
         } else if (msg.event === 'done') {
           data = msg.data;
           localStorage.setItem('lastResult', JSON.stringify(data));
           hideStreamPreview();
-          renderResult(data);
+          // Los test cases ya están en pantalla; solo renderizar las demás secciones
+          renderResult(data, true);
           if (data.agent_trace?.length) {
             renderAgentTrace(data.agent_trace, data.used_fallback, data.optimizer_output);
           }
@@ -536,7 +542,7 @@ function renderAgentTrace(traces, usedFallback, optimizerOutput = null) {
   switchTab('agents');
 }
 
-// ── Evaluate (DeepEval real)
+// ── Evaluate (DeepEval streaming)
 async function evaluate() {
   if (!data) return;
   const story = document.getElementById('userStory').value.trim();
@@ -545,10 +551,16 @@ async function evaluate() {
   const btn = document.getElementById('evaluateBtn');
   btn.disabled = true;
   btn.querySelector('span').textContent = '⟳';
-  showToast('Evaluando con DeepEval (~30-60s)...', 'var(--cyan)');
+
+  const KEY_MAP = {
+    coverage: 'cov', relevancy: 'rel', consistency: 'con',
+    specificity: 'spe', nonfunctional_balance: 'nfb',
+  };
+  ['cov','rel','con','spe','nfb'].forEach(k => setMetric(k, 0));
+  showToast('Evaluando con DeepEval...', 'var(--cyan)');
 
   try {
-    const res = await fetch(API + '/evaluate', {
+    const res = await fetch(API + '/evaluate/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -563,13 +575,37 @@ async function evaluate() {
       throw new Error(err.detail || 'Error de evaluación');
     }
 
-    const scores = await res.json();
-    setMetric('cov', scores.coverage);
-    setMetric('rel', scores.relevancy);
-    setMetric('con', scores.consistency);
-    if (scores.specificity)         setMetric('spe', scores.specificity);
-    if (scores.nonfunctional_balance) setMetric('nfb', scores.nonfunctional_balance);
-    showToast(`Evaluación completa · overall ${scores.overall.toFixed(2)}`);
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let msg;
+        try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (msg.error) throw new Error(msg.error);
+
+        if (msg.metric) {
+          const key = KEY_MAP[msg.metric];
+          if (key) setMetric(key, msg.score);
+          const icon = msg.passed ? '✓' : '✗';
+          const color = msg.passed ? 'var(--green)' : 'var(--amber)';
+          showToast(`${msg.name} ${icon} ${msg.score.toFixed(2)} (${msg.step}/${msg.total})`, color);
+        }
+
+        if (msg.done) {
+          showToast(`Evaluación completa · overall ${msg.overall.toFixed(2)}`);
+        }
+      }
+    }
 
   } catch (e) {
     showToast('Error: ' + e.message, 'var(--red)');
@@ -774,8 +810,8 @@ function mergeOptimizerCases(addedCases) {
 // ── Init
 loadModels();
 checkRagStatus();
-setInterval(loadModels, 30000);
-setInterval(checkRagStatus, 60000);
+setInterval(loadModels, 300000);
+setInterval(checkRagStatus, 300000);
 const saved = localStorage.getItem('lastResult');
 if (saved) {
   try {

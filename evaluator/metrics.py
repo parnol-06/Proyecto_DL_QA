@@ -13,14 +13,17 @@ from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from deepeval.models.base_model import DeepEvalBaseLLM
 import ollama
 import json
-from typing import Optional
+import os
+from typing import Generator, Optional
+
+_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 
 # ─────────────────────────────────────────────
 # 1. Wrap Ollama as a DeepEval-compatible model
 # ─────────────────────────────────────────────
 class OllamaEvalModel(DeepEvalBaseLLM):
-    def __init__(self, model_name: str = "llama3.2"):
+    def __init__(self, model_name: str = _DEFAULT_MODEL):
         self.model_name = model_name
 
     def load_model(self):
@@ -133,7 +136,7 @@ def make_nonfunctional_balance_metric(model: DeepEvalBaseLLM) -> GEval:
 def evaluate_test_cases(
     user_story: str,
     generated_output: dict,
-    model_name: str = "llama3.2",
+    model_name: str = _DEFAULT_MODEL,
 ) -> dict:
     """
     Runs DeepEval metrics on the generated test cases.
@@ -187,7 +190,70 @@ def evaluate_test_cases(
 
 
 # ─────────────────────────────────────────────
-# 4. CLI runner for standalone testing
+# 4. Streaming evaluation runner (yields one result per metric)
+# ─────────────────────────────────────────────
+_METRIC_KEY_MAP = {
+    "Test Coverage":         "coverage",
+    "Test Relevancy":        "relevancy",
+    "Test Consistency":      "consistency",
+    "Step Specificity":      "specificity",
+    "Non-Functional Balance": "nonfunctional_balance",
+}
+
+def stream_evaluate_test_cases(
+    user_story: str,
+    generated_output: dict,
+    model_name: str = _DEFAULT_MODEL,
+) -> Generator[dict, None, None]:
+    """
+    Same as evaluate_test_cases but yields each metric result as it completes.
+    Yields dicts with keys: metric, name, score, passed, threshold, reason, step, total.
+    Final yield: {"done": True, "overall": float}.
+    """
+    eval_model = OllamaEvalModel(model_name)
+    actual_output = json.dumps(generated_output, indent=2)
+    test_case = LLMTestCase(input=user_story, actual_output=actual_output)
+
+    factories = [
+        make_coverage_metric,
+        make_relevancy_metric,
+        make_consistency_metric,
+        make_specificity_metric,
+        make_nonfunctional_balance_metric,
+    ]
+    total = len(factories)
+    scores = []
+
+    for step, factory in enumerate(factories, start=1):
+        metric = factory(eval_model)
+        try:
+            metric.measure(test_case)
+            score = round(metric.score, 3)
+            passed = metric.is_successful()
+            reason = getattr(metric, "reason", "N/A")
+        except Exception as exc:
+            score = 0.0
+            passed = False
+            reason = f"Error: {exc}"
+
+        scores.append(score)
+        yield {
+            "metric": _METRIC_KEY_MAP.get(metric.name, metric.name.lower()),
+            "name": metric.name,
+            "score": score,
+            "passed": passed,
+            "threshold": metric.threshold,
+            "reason": reason,
+            "step": step,
+            "total": total,
+        }
+
+    overall = round(sum(scores) / len(scores), 3) if scores else 0.0
+    yield {"done": True, "overall": overall}
+
+
+# ─────────────────────────────────────────────
+# 5. CLI runner for standalone testing
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     sample_story = """

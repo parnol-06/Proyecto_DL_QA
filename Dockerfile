@@ -44,6 +44,7 @@ COPY --from=builder /install /usr/local
 COPY --chown=appuser:appgroup backend/      ./backend/
 COPY --chown=appuser:appgroup frontend/     ./frontend/
 COPY --chown=appuser:appgroup corpus/       ./corpus/
+COPY --chown=appuser:appgroup evaluator/    ./evaluator/
 COPY --chown=appuser:appgroup entrypoint.sh ./
 
 RUN chmod +x entrypoint.sh

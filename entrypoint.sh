@@ -1,8 +1,6 @@
 #!/bin/sh
 
-OLLAMA_BASE=${OLLAMA_HOST:-http://ollama:11434}
-PRIMARY_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
-EMBED_MODEL="nomic-embed-text"
+OLLAMA_BASE=${OLLAMA_HOST:-http://host.docker.internal:11434}
 
 # ── Esperar a Ollama ──────────────────────────────────────────────────────────
 echo "[entrypoint] Esperando a Ollama en $OLLAMA_BASE ..."
@@ -10,33 +8,6 @@ until curl -sf "$OLLAMA_BASE/api/tags" > /dev/null 2>&1; do
   sleep 3
 done
 echo "[entrypoint] Ollama disponible."
-
-# ── Función de descarga ───────────────────────────────────────────────────────
-pull_model() {
-  MODEL_NAME=$1
-
-  # Verificar si el modelo ya existe (coincidencia exacta en el campo "name")
-  if curl -sf "$OLLAMA_BASE/api/tags" | grep -q "\"name\":\"$MODEL_NAME\""; then
-    echo "[entrypoint] $MODEL_NAME ya disponible."
-    return 0
-  fi
-
-  echo "[entrypoint] Descargando $MODEL_NAME — esto puede tardar varios minutos..."
-
-  # Mostrar progreso real (sin -s); --no-buffer para ver líneas conforme llegan
-  if curl --no-buffer -X POST "$OLLAMA_BASE/api/pull" \
-       -H "Content-Type: application/json" \
-       -d "{\"name\": \"$MODEL_NAME\"}"; then
-    echo ""
-    echo "[entrypoint] $MODEL_NAME descargado correctamente."
-  else
-    echo "[entrypoint] ADVERTENCIA: no se pudo descargar $MODEL_NAME (continuando de todas formas)."
-  fi
-}
-
-# ── Descargar modelos ─────────────────────────────────────────────────────────
-pull_model "$PRIMARY_MODEL"
-pull_model "$EMBED_MODEL"
 
 # ── Configurar Opik ───────────────────────────────────────────────────────────
 if [ -n "$OPIK_API_KEY" ]; then

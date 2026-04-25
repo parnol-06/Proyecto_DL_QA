@@ -76,7 +76,7 @@ def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
 
     model_tag = f"ollama/{req.model}"
     base_url  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    llm = LLM(model=model_tag, base_url=base_url, temperature=req.temperature)
+    llm = LLM(model=model_tag, base_url=base_url, temperature=req.temperature, max_tokens=4096)
 
     rag_section = (
         f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA:\n{rag_context}\n"
@@ -261,6 +261,9 @@ def _run_crew_streaming(req: AgentGenerateRequest, rag_context: str, put_event) 
         logger.warning("Error parseando output del Generador: %s", exc)
         parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
 
+    for tc in parsed_data.get("test_cases") or []:
+        put_event({"event": "case", "case": tc})
+
     put_event({
         "event": "agent_done", "agent": "Generador", "step": 1,
         "elapsed_s": t_gen,
@@ -289,6 +292,9 @@ def _run_crew_streaming(req: AgentGenerateRequest, rag_context: str, put_event) 
     t_opt = round(time.monotonic() - t2, 2)
 
     optimizer_result = _parse_optimizer_output(task_optimize.output.raw if task_optimize.output else "")
+    for tc in optimizer_result.get("added_cases") or []:
+        put_event({"event": "case", "case": tc})
+
     put_event({
         "event": "agent_done", "agent": "Optimizador", "step": 3,
         "elapsed_s": t_opt,

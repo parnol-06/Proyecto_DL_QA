@@ -206,7 +206,7 @@ async def stream_generate_test_cases(req: GenerateRequest):
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": _build_prompt(req, rag_context)},
     ]
-    options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7}
+    options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7, "num_predict": 4096}
 
     def _stream_sync() -> None:
         """Corre en hilo separado — nunca bloquea el event loop."""
@@ -262,7 +262,10 @@ async def stream_generate_test_cases(req: GenerateRequest):
     try:
         data = _parse_llm_output(accumulated)
         result = _build_response(data, req.user_story)
-        yield f"data: {json.dumps({'result': result.model_dump()})}\n\n"
+        result_dict = result.model_dump()
+        for tc in result_dict.get("test_cases") or []:
+            yield f"data: {json.dumps({'case': tc})}\n\n"
+        yield f"data: {json.dumps({'result': result_dict})}\n\n"
     except Exception as e:
         logger.error("Error parseando stream | %s", str(e))
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -296,7 +299,7 @@ async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": _build_prompt(req, rag_context)},
         ]
-        options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7}
+        options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7, "num_predict": 4096}
 
         content = _tracked_ollama_call(req.user_story[:400], req.model, messages, options)
 
