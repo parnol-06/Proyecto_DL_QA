@@ -128,19 +128,31 @@ def _parse_llm_output(content: str) -> dict:
     if not json_match:
         raise ValueError("El modelo no devolvió un JSON válido")
 
-    json_str = json_match.group()
-    json_str = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', json_str)
+    raw = json_match.group()
 
+    # Intento 1: JSON estándar
     try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as first_err:
-        logger.warning("Fallo JSON primario, intentando reparación | fragmento=%s", json_str[:200])
-        json_str = json_str.replace("'", '"')
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            logger.error("Fallo JSON irreparable | error=%s | fragmento=%s", first_err, json_str[:300])
-            raise
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Intento 2: json-repair (maneja comillas faltantes, comas extra, etc.)
+    try:
+        from json_repair import repair_json
+        repaired = repair_json(raw, return_objects=True)
+        if isinstance(repaired, dict):
+            return repaired
+    except Exception:
+        pass
+
+    # Intento 3: reparación manual de claves sin comillas (fallback legacy)
+    try:
+        fixed = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', raw)
+        fixed = fixed.replace("'", '"')
+        return json.loads(fixed)
+    except json.JSONDecodeError as err:
+        logger.error("JSON irreparable | error=%s | fragmento=%s", err, raw[:300])
+        raise
 
 
 def _build_response(data: dict, raw_story: str) -> GenerateResponse:
@@ -159,12 +171,12 @@ def _build_response(data: dict, raw_story: str) -> GenerateResponse:
 
 
 async def stream_generate_test_cases(req: GenerateRequest):
-    """Async generator que emite tokens SSE y al final el resultado JSON completo."""
-    accumulated = ""
-    opik_trace = None
-    elapsed = 0.0
-
-    # Recuperar contexto RAG si está habilitado
+    """
+    Async generator SSE.
+    El streaming síncrono de ollama corre en un thread executor para no
+    bloquear el event loop — de lo contrario uvicorn cierra la conexión
+    chunked antes de que termine (ERR_INCOMPLETE_CHUNKED_ENCODING).
+    """
     rag_context = ""
     if req.use_rag:
         try:
@@ -175,53 +187,75 @@ async def stream_generate_test_cases(req: GenerateRequest):
         except Exception as exc:
             logger.warning("RAG no disponible: %s", exc)
 
-    # Iniciar traza Opik antes del streaming
+    opik_trace = None
     if _OPIK_ENABLED:
         try:
             _client = opik.Opik()
             opik_trace = _client.trace(
                 name="stream_generate_test_cases",
-                input={
-                    "user_story": req.user_story[:400],
-                    "model": req.model,
-                    "temperature": req.temperature,
-                    "use_rag": req.use_rag,
-                    "rag_context_chars": len(rag_context),
-                },
+                input={"user_story": req.user_story[:400], "model": req.model,
+                       "temperature": req.temperature, "use_rag": req.use_rag},
                 project_name=OPIK_PROJECT_NAME,
             )
         except Exception as exc:
             logger.warning("Error iniciando traza Opik: %s", exc)
 
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user",   "content": _build_prompt(req, rag_context)},
+    ]
+    options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7}
+
+    def _stream_sync() -> None:
+        """Corre en hilo separado — nunca bloquea el event loop."""
+        buf = []
+        try:
+            t0 = time.monotonic()
+            for chunk in ollama.chat(model=req.model, messages=messages,
+                                     options=options, stream=True):
+                token = chunk["message"]["content"]
+                buf.append(token)
+                loop.call_soon_threadsafe(queue.put_nowait, {"token": token})
+            elapsed = round(time.monotonic() - t0, 2)
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                {"done": True, "accumulated": "".join(buf), "elapsed": elapsed},
+            )
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, {"error": str(exc)})
+
     async with _llm_semaphore:
         logger.info("Iniciando streaming | modelo=%s | rag=%s", req.model, bool(rag_context))
-        t0 = time.monotonic()
+        loop.run_in_executor(None, _stream_sync)
 
-        for chunk in ollama.chat(
-            model=req.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(req, rag_context)},
-            ],
-            options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7},
-            stream=True,
-        ):
-            token = chunk["message"]["content"]
-            accumulated += token
-            yield f"data: {json.dumps({'token': token})}\n\n"
-            await asyncio.sleep(0)
+        accumulated = ""
+        elapsed = 0.0
 
-        elapsed = time.monotonic() - t0
-        logger.info("Stream completo | modelo=%s | tiempo=%.2fs", req.model, elapsed)
+        while True:
+            item = await queue.get()
 
-    # Cerrar traza Opik con output y latencia
+            if "token" in item:
+                accumulated += item["token"]
+                yield f"data: {json.dumps({'token': item['token']})}\n\n"
+
+            elif "error" in item:
+                logger.error("Error en stream ollama: %s", item["error"])
+                yield f"data: {json.dumps({'error': item['error']})}\n\n"
+                break
+
+            elif "done" in item:
+                accumulated = item["accumulated"]
+                elapsed = item["elapsed"]
+                logger.info("Stream completo | modelo=%s | tiempo=%.2fs", req.model, elapsed)
+                break
+
     if opik_trace:
         try:
-            opik_trace.end(output={
-                "output_length_chars": len(accumulated),
-                "elapsed_seconds": round(elapsed, 2),
-                "preview": accumulated[:300],
-            })
+            opik_trace.end(output={"output_length_chars": len(accumulated),
+                                   "elapsed_seconds": elapsed,
+                                   "preview": accumulated[:300]})
         except Exception as exc:
             logger.warning("Error cerrando traza Opik: %s", exc)
 

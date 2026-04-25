@@ -357,7 +357,17 @@ async function generate() {
   }
 }
 
-// ── Generate con agentes CrewAI
+// ── Barra de progreso de agentes (SSE)
+function _updateAgentProgress(agent, step, total, status) {
+  const el = document.getElementById('streamText');
+  if (!el) return;
+  const icons = { Generador: '🤖', Revisor: '🔍', Optimizador: '⚡' };
+  const icon = icons[agent] || '🤖';
+  const pct  = Math.round((step / total) * 100);
+  el.textContent = `${icon} ${agent} (${step}/${total}) ${status} — ${pct}% completado`;
+}
+
+// ── Generate con agentes CrewAI (streaming SSE)
 async function generateAgents() {
   const story = document.getElementById('userStory').value.trim();
 
@@ -370,23 +380,21 @@ async function generateAgents() {
 
   const _t0 = Date.now();
   let _timerInterval;
-  const steps = ['Agente Generador iniciando...', 'Generando suite de test cases...', 'Agente Revisor analizando...', 'Revisando cobertura y calidad...'];
-  let _stepIdx = 0;
-  btnText.textContent = steps[0];
+  btnText.textContent = 'Agente Generador iniciando... 0s';
   switchTab('tc');
   showStreamPreview();
-  document.getElementById('streamText').textContent = 'Los agentes están trabajando... esto puede tomar 2-4 minutos.';
+  document.getElementById('streamText').textContent = '🤖 Iniciando pipeline de agentes...';
 
   _timerInterval = setInterval(() => {
     const s = Math.round((Date.now() - _t0) / 1000);
-    _stepIdx = Math.min(Math.floor(s / 30), steps.length - 1);
-    btnText.textContent = steps[_stepIdx] + ' ' + s + 's';
+    btnText.textContent = `Agentes trabajando... ${s}s`;
   }, 1000);
 
   const useRag = document.getElementById('ragToggle')?.checked ?? false;
+  const agentTraces = [];
 
   try {
-    const res = await fetch(API + '/generate/agents', {
+    const res = await fetch(API + '/generate/agents/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -404,21 +412,71 @@ async function generateAgents() {
       throw new Error(err.detail || 'Error en agentes');
     }
 
-    const result = await res.json();
-    data = result;
-    localStorage.setItem('lastResult', JSON.stringify(data));
-    hideStreamPreview();
-    renderResult(data);
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
 
-    // Mostrar traza de agentes si existe
-    if (result.agent_trace && result.agent_trace.length) {
-      renderAgentTrace(result.agent_trace, result.used_fallback);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let msg;
+        try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (msg.event === 'agent_start') {
+          // Actualizar preview con qué agente está corriendo
+          _updateAgentProgress(msg.agent, msg.step, msg.total, 'procesando...');
+          btnText.textContent = `${msg.agent} (${msg.step}/${msg.total})... ${Math.round((Date.now()-_t0)/1000)}s`;
+
+        } else if (msg.event === 'agent_done') {
+          agentTraces.push({ agent: msg.agent, elapsed_s: msg.elapsed_s, summary: msg.summary });
+          _updateAgentProgress(msg.agent, msg.step, msg.total, `✓ ${msg.summary}`);
+
+          // Renderizar test cases en cuanto el Generador termina (sin esperar Revisor/Optimizador)
+          if (msg.agent === 'Generador' && msg.data?.test_cases?.length) {
+            data = { ...msg.data, raw_story: story };
+            localStorage.setItem('lastResult', JSON.stringify(data));
+            hideStreamPreview();
+            renderResult(data);
+            showToast(`${msg.data.test_cases.length} casos listos · Revisor analizando...`, 'var(--cyan)');
+            switchTab('tc');
+            showStreamPreview();
+          }
+
+          // Mostrar resultado parcial del Revisor en panel de agentes
+          if (msg.agent === 'Revisor') {
+            renderAgentTrace(agentTraces, false, null);
+          }
+
+          // Fusionar casos del Optimizador cuando termina
+          if (msg.agent === 'Optimizador' && msg.data?.added_cases?.length) {
+            mergeOptimizerCases(msg.data.added_cases);
+          }
+
+        } else if (msg.event === 'done') {
+          data = msg.data;
+          localStorage.setItem('lastResult', JSON.stringify(data));
+          hideStreamPreview();
+          renderResult(data);
+          if (data.agent_trace?.length) {
+            renderAgentTrace(data.agent_trace, data.used_fallback, data.optimizer_output);
+          }
+          const elapsed = Math.round((Date.now() - _t0) / 1000);
+          const fallbackTag = data.used_fallback ? ' (fallback)' : '';
+          showToast(`${(data.test_cases||[]).length} casos · ${elapsed}s${fallbackTag}`);
+          document.getElementById('evaluateBtn').disabled = false;
+
+        } else if (msg.event === 'error') {
+          throw new Error(msg.message || 'Error en pipeline de agentes');
+        }
+      }
     }
-
-    const elapsed = Math.round((Date.now() - _t0) / 1000);
-    const fallbackTag = result.used_fallback ? ' (fallback)' : '';
-    showToast(`${(data.test_cases||[]).length} casos generados por agentes en ${elapsed}s${fallbackTag}`);
-    document.getElementById('evaluateBtn').disabled = false;
 
   } catch (e) {
     hideStreamPreview();
@@ -432,7 +490,7 @@ async function generateAgents() {
 }
 
 // ── Render traza de agentes
-function renderAgentTrace(traces, usedFallback) {
+function renderAgentTrace(traces, usedFallback, optimizerOutput = null) {
   const panel = document.getElementById('panel-agents');
   const empty = document.getElementById('empty-agents');
   if (!panel) return;
@@ -446,6 +504,25 @@ function renderAgentTrace(traces, usedFallback) {
     ? '<div style="background:var(--amber);color:#000;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:12px">⚠ CrewAI falló — se usó generación directa como fallback</div>'
     : '';
 
+  const gapsHtml = (optimizerOutput && optimizerOutput.priority_gaps && optimizerOutput.priority_gaps.length)
+    ? `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Brechas Críticas Identificadas</div>
+        ${optimizerOutput.priority_gaps.map(g => `
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="background:${g.impact==='alto'?'var(--red)':'var(--amber)'};color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${g.rank}</span>
+            <div>
+              <div style="font-size:12.5px;font-weight:600;color:var(--text)">${g.reason}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Categoría: ${g.category} · Impacto: ${g.impact}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`
+    : '';
+
+  const summaryHtml = (optimizerOutput && optimizerOutput.optimization_summary)
+    ? `<div style="margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;color:var(--muted2)">${optimizerOutput.optimization_summary}</div>`
+    : '';
+
   container.innerHTML = fallbackBanner + traces.map(t => `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -454,7 +531,7 @@ function renderAgentTrace(traces, usedFallback) {
       </div>
       <p style="font-size:13px;color:var(--text);margin:0">${t.summary}</p>
     </div>
-  `).join('');
+  `).join('') + gapsHtml + summaryHtml;
 
   switchTab('agents');
 }
@@ -670,6 +747,28 @@ function downloadXLSX() {
 
   XLSX.writeFile(wb, 'test-cases.xlsx');
   showToast('XLSX exportado correctamente');
+}
+
+// ── Fusionar casos del Optimizador de Cobertura
+function mergeOptimizerCases(addedCases) {
+  if (!addedCases || !addedCases.length) return;
+  if (!data) return;
+
+  // Agregar al objeto data global
+  addedCases.forEach((tc, i) => {
+    tc.id = tc.id || `OPT-${String(i+1).padStart(3,'0')}`;
+    data.test_cases.push(tc);
+  });
+  localStorage.setItem('lastResult', JSON.stringify(data));
+
+  // Re-renderizar la lista de TCs con los casos optimizados añadidos
+  // Solo actualizar el contador y agregar las nuevas cards al final de #tc-list
+  const count = data.test_cases.length;
+  const cntEl = document.getElementById('cnt-tc');
+  if (cntEl) cntEl.textContent = count;
+
+  // Mostrar badge en el contador indicando casos del optimizador
+  showToast(`+${addedCases.length} casos añadidos por el Optimizador`, 'var(--accent2)');
 }
 
 // ── Init

@@ -1,10 +1,48 @@
+# ── VCS y entornos locales ────────────────────────────────────────────────────
+.git/
+.github/
+.claude/
 venv/
+.venv/
+
+# ── Python cache y artefactos de build ───────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
-.env
-.git/
-.github/
-docs/
-*.md
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ── Herramientas de desarrollo (no van al runtime) ───────────────────────────
 .pytest_cache/
+tests/
+scripts/
+notebooks/
+docs/
+
+# ── Secrets y configuración local ────────────────────────────────────────────
+.env
+.env.*
+# .env.example SÍ se incluye (no contiene secretos reales)
+!.env.example
+
+# ── Datos generados / volúmenes ───────────────────────────────────────────────
+chroma_db/
+experiments/
+
+# ── Dependencias opcionales (no se instalan en la imagen) ────────────────────
+requirements-eval.txt
+requirements-dev.txt
+
+# ── Docs del proyecto (no necesarios en runtime) ─────────────────────────────
+# NOTA: *.md aplica solo al nivel raíz en Docker — corpus/*.md quedan incluidos
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+
+# ── Logs y temporales ────────────────────────────────────────────────────────
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

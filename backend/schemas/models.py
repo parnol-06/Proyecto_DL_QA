@@ -43,6 +43,7 @@ class AgentGenerateResponse(BaseModel):
     raw_story: str
     agent_trace: list[AgentTrace]
     used_fallback: bool = False
+    optimizer_output: dict = Field(default_factory=dict)
 
 
 class RegenerateTCRequest(BaseModel):

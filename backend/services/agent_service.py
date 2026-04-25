@@ -1,8 +1,9 @@
 """
-Agent Service — Pipeline de 2 agentes CrewAI para generación y revisión de test cases.
+Agent Service — Pipeline de 3 agentes CrewAI para generación, revisión y optimización de test cases.
 
-Agente 1 — Generador : Produce la suite de test cases en JSON
-Agente 2 — Revisor   : Evalúa cobertura, calidad y gaps de la suite generada
+Agente 1 — Generador   : Produce la suite de test cases en JSON
+Agente 2 — Revisor     : Evalúa cobertura, calidad y gaps de la suite generada
+Agente 3 — Optimizador : Identifica y prioriza los casos críticos faltantes
 """
 
 import asyncio
@@ -37,6 +38,21 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _parse_optimizer_output(text: str) -> dict:
+    """Extrae el JSON del output del Optimizador. Fallback a dict genérico."""
+    try:
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            return json.loads(match.group())
+    except Exception:
+        pass
+    return {
+        "priority_gaps": [],
+        "added_cases": [],
+        "optimization_summary": "No se pudo parsear la respuesta del optimizador",
+    }
+
+
 def _parse_reviewer_output(text: str) -> dict:
     """Extrae el JSON del output del Revisor. Fallback a dict genérico."""
     try:
@@ -54,19 +70,19 @@ def _parse_reviewer_output(text: str) -> dict:
     }
 
 
-def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
-    """
-    Ejecuta el pipeline CrewAI de forma síncrona.
-    Retorna dict con los campos de AgentGenerateResponse.
-    """
-    from crewai import Agent, Task, Crew, LLM
+def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
+    """Construye los agentes y tareas CrewAI reutilizables."""
+    from crewai import Agent, Task, LLM
 
     model_tag = f"ollama/{req.model}"
-    base_url   = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-
+    base_url  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     llm = LLM(model=model_tag, base_url=base_url, temperature=req.temperature)
 
-    # ── Definición de agentes ─────────────────────────────────────────────────
+    rag_section = (
+        f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA:\n{rag_context}\n"
+        if rag_context else ""
+    )
+
     generator = Agent(
         role="QA Test Case Generator",
         goal="Generar una suite completa y detallada de casos de prueba estructurados en JSON para la historia de usuario indicada",
@@ -78,11 +94,8 @@ def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
             "usabilidad y compatibilidad. Cada caso tiene mínimo 5 pasos detallados y "
             "criterios de aceptación medibles. Respondes SIEMPRE en español."
         ),
-        llm=llm,
-        allow_delegation=False,
-        verbose=False,
+        llm=llm, allow_delegation=False, verbose=False,
     )
-
     reviewer = Agent(
         role="QA Quality Reviewer",
         goal="Evaluar la calidad, cobertura y estructura de una suite de test cases y emitir un veredicto fundamentado",
@@ -92,15 +105,19 @@ def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
             "específicos y que los casos no funcionales tengan criterios cuantitativos. "
             "Eres crítico pero constructivo. Respondes SIEMPRE en español."
         ),
-        llm=llm,
-        allow_delegation=False,
-        verbose=False,
+        llm=llm, allow_delegation=False, verbose=False,
     )
-
-    # ── Definición de tareas ──────────────────────────────────────────────────
-    rag_section = (
-        f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA:\n{rag_context}\n"
-        if rag_context else ""
+    optimizer = Agent(
+        role="QA Coverage Optimizer",
+        goal="Identificar y priorizar los casos de prueba críticos faltantes en la suite generada, basándose en el análisis del Revisor",
+        backstory=(
+            "Eres un QA Architect especializado en análisis de brechas de cobertura. "
+            "Recibes una suite de test cases y el análisis de calidad del Revisor, y produces "
+            "una lista priorizada de los 3 casos más críticos que faltan, con su especificación completa. "
+            "Siempre priorizas seguridad > rendimiento > casos de negocio críticos. "
+            "Respondes SIEMPRE en español."
+        ),
+        llm=llm, allow_delegation=False, verbose=False,
     )
 
     task_generate = Task(
@@ -128,7 +145,6 @@ def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
         expected_output="JSON válido con test_cases, edge_scenarios, potential_bugs y coverage_summary",
         agent=generator,
     )
-
     task_review = Task(
         description=(
             f"Revisa la suite de test cases generada para la siguiente historia de usuario.\n\n"
@@ -147,52 +163,154 @@ def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
         agent=reviewer,
         context=[task_generate],
     )
-
-    # ── Ejecutar Crew ─────────────────────────────────────────────────────────
-    crew = Crew(
-        agents=[generator, reviewer],
-        tasks=[task_generate, task_review],
-        verbose=False,
+    task_optimize = Task(
+        description=(
+            f"Basándote en la suite de test cases generada y el análisis del Revisor para la historia:\n\n"
+            f"HISTORIA: {req.user_story}\n\n"
+            "INSTRUCCIONES:\n"
+            "1. Identifica los 3 casos de prueba más críticos que FALTAN en la suite\n"
+            "2. Prioriza según: seguridad > rendimiento > casos de negocio críticos\n"
+            "3. Para cada caso faltante, genera su especificación completa\n"
+            "4. Explica por qué cada caso es crítico\n\n"
+            "Responde SOLO con JSON:\n"
+            '{"priority_gaps": [{"rank": 1, "category": "...", "reason": "...", '
+            '"impact": "alto|medio"}], '
+            '"added_cases": [{"id": "OPT-001", "title": "...", "category": "...", '
+            '"priority": "alto|medio|bajo", "preconditions": ["..."], '
+            '"steps": ["..."], "expected_result": "...", "test_type": "..."}], '
+            '"optimization_summary": "texto breve de qué se optimizó"}'
+        ),
+        expected_output="JSON con priority_gaps, added_cases y optimization_summary",
+        agent=optimizer,
+        context=[task_generate, task_review],
     )
 
+    return generator, reviewer, optimizer, task_generate, task_review, task_optimize
+
+
+def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
+    """Ejecuta el pipeline CrewAI de forma síncrona."""
+    from crewai import Crew
+
+    generator, reviewer, optimizer, task_generate, task_review, task_optimize = \
+        _build_agents_and_tasks(req, rag_context)
+
     t0 = time.monotonic()
-    result = crew.kickoff()
-    total_elapsed = time.monotonic() - t0
+    Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
+    t_gen = round(time.monotonic() - t0, 2)
 
-    # Extraer outputs de cada tarea
+    t1 = time.monotonic()
+    Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
+    t_rev = round(time.monotonic() - t1, 2)
+
+    t2 = time.monotonic()
+    Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
+    t_opt = round(time.monotonic() - t2, 2)
+
     gen_output = task_generate.output.raw if task_generate.output else ""
-    rev_output = task_review.output.raw  if task_review.output  else ""
+    rev_output = task_review.output.raw   if task_review.output  else ""
+    opt_output = task_optimize.output.raw if task_optimize.output else ""
 
-    # Parsear test cases del Agente 1
     try:
         parsed_data = _parse_llm_output(gen_output)
     except Exception as exc:
         logger.warning("Error parseando output del Generador: %s", exc)
         parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
 
-    # Parsear revisión del Agente 2
-    review = _parse_reviewer_output(rev_output)
+    review         = _parse_reviewer_output(rev_output)
+    optimizer_result = _parse_optimizer_output(opt_output)
 
-    # Construir trazas de agentes
     agent_trace = [
-        AgentTrace(
-            agent="Generador",
-            elapsed_s=round(total_elapsed * 0.65, 2),
-            summary=f"{len(parsed_data.get('test_cases', []))} casos generados",
-        ),
-        AgentTrace(
-            agent="Revisor",
-            elapsed_s=round(total_elapsed * 0.35, 2),
-            summary=f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}",
-        ),
+        AgentTrace(agent="Generador",   elapsed_s=t_gen,
+                   summary=f"{len(parsed_data.get('test_cases', []))} casos generados"),
+        AgentTrace(agent="Revisor",     elapsed_s=t_rev,
+                   summary=f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}"),
+        AgentTrace(agent="Optimizador", elapsed_s=t_opt,
+                   summary=f"{len(optimizer_result.get('added_cases', []))} casos optimizados | {optimizer_result.get('optimization_summary', '')[:80]}"),
     ]
 
     return {
         "parsed_data": parsed_data,
         "agent_trace": agent_trace,
         "review": review,
+        "optimizer_result": optimizer_result,
         "used_fallback": False,
     }
+
+
+def _run_crew_streaming(req: AgentGenerateRequest, rag_context: str, put_event) -> None:
+    """
+    Igual que _run_crew pero llama a put_event() tras cada agente.
+    Permite streaming SSE sin bloquear el event loop.
+    """
+    from crewai import Crew
+
+    generator, reviewer, optimizer, task_generate, task_review, task_optimize = \
+        _build_agents_and_tasks(req, rag_context)
+
+    # ── Agente 1: Generador ──────────────────────────────────────────────────
+    put_event({"event": "agent_start", "agent": "Generador", "step": 1, "total": 3})
+    t0 = time.monotonic()
+    Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
+    t_gen = round(time.monotonic() - t0, 2)
+
+    gen_output = task_generate.output.raw if task_generate.output else ""
+    try:
+        parsed_data = _parse_llm_output(gen_output)
+    except Exception as exc:
+        logger.warning("Error parseando output del Generador: %s", exc)
+        parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
+
+    put_event({
+        "event": "agent_done", "agent": "Generador", "step": 1,
+        "elapsed_s": t_gen,
+        "summary": f"{len(parsed_data.get('test_cases', []))} casos generados",
+        "data": parsed_data,
+    })
+
+    # ── Agente 2: Revisor ────────────────────────────────────────────────────
+    put_event({"event": "agent_start", "agent": "Revisor", "step": 2, "total": 3})
+    t1 = time.monotonic()
+    Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
+    t_rev = round(time.monotonic() - t1, 2)
+
+    review = _parse_reviewer_output(task_review.output.raw if task_review.output else "")
+    put_event({
+        "event": "agent_done", "agent": "Revisor", "step": 2,
+        "elapsed_s": t_rev,
+        "summary": f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}",
+        "data": review,
+    })
+
+    # ── Agente 3: Optimizador ────────────────────────────────────────────────
+    put_event({"event": "agent_start", "agent": "Optimizador", "step": 3, "total": 3})
+    t2 = time.monotonic()
+    Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
+    t_opt = round(time.monotonic() - t2, 2)
+
+    optimizer_result = _parse_optimizer_output(task_optimize.output.raw if task_optimize.output else "")
+    put_event({
+        "event": "agent_done", "agent": "Optimizador", "step": 3,
+        "elapsed_s": t_opt,
+        "summary": f"{len(optimizer_result.get('added_cases', []))} casos optimizados | {optimizer_result.get('optimization_summary', '')[:80]}",
+        "data": optimizer_result,
+    })
+
+    # ── Evento final con respuesta completa ──────────────────────────────────
+    generate_resp = _build_response(parsed_data, req.user_story)
+    put_event({
+        "event": "done",
+        "data": {
+            **generate_resp.model_dump(),
+            "agent_trace": [
+                {"agent": "Generador",   "elapsed_s": t_gen, "summary": f"{len(parsed_data.get('test_cases', []))} casos generados"},
+                {"agent": "Revisor",     "elapsed_s": t_rev, "summary": f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}"},
+                {"agent": "Optimizador", "elapsed_s": t_opt, "summary": f"{len(optimizer_result.get('added_cases', []))} casos optimizados"},
+            ],
+            "used_fallback": False,
+            "optimizer_output": optimizer_result,
+        },
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +322,7 @@ async def run_agent_pipeline(
     rag_context: str = "",
 ) -> AgentGenerateResponse:
     """
-    Ejecuta el pipeline de 2 agentes CrewAI de forma asíncrona.
+    Ejecuta el pipeline de 3 agentes CrewAI de forma asíncrona.
     Hace fallback a generate_test_cases si CrewAI falla.
     """
     opik_trace = None
@@ -231,10 +349,11 @@ async def run_agent_pipeline(
             lambda: _run_crew(req, rag_context),
         )
 
-        parsed_data  = result["parsed_data"]
-        agent_trace  = result["agent_trace"]
-        review       = result["review"]
-        used_fallback = result["used_fallback"]
+        parsed_data     = result["parsed_data"]
+        agent_trace     = result["agent_trace"]
+        review          = result["review"]
+        optimizer_result = result.get("optimizer_result", {})
+        used_fallback   = result["used_fallback"]
 
     except Exception as exc:
         logger.error("CrewAI falló, usando fallback directo | %s", exc)
@@ -254,6 +373,7 @@ async def run_agent_pipeline(
             AgentTrace(agent="Fallback (sin agentes)", elapsed_s=0.0, summary=f"Error CrewAI: {str(exc)[:80]}")
         ]
         review = {}
+        optimizer_result = {}
         used_fallback = True
 
     # Cerrar traza Opik
@@ -278,4 +398,36 @@ async def run_agent_pipeline(
         raw_story=req.user_story,
         agent_trace=agent_trace,
         used_fallback=used_fallback,
+        optimizer_output=optimizer_result,
     )
+
+
+async def stream_agent_pipeline(
+    req: AgentGenerateRequest,
+    rag_context: str = "",
+):
+    """
+    Async generator SSE. Emite un evento tras cada agente:
+      agent_start → agent_done (con datos parciales) → done (respuesta completa)
+    El frontend puede renderizar los test cases en cuanto el Generador termina.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def put_event(event: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, event)
+
+    def _run() -> None:
+        try:
+            _run_crew_streaming(req, rag_context, put_event)
+        except Exception as exc:
+            logger.error("Error en pipeline streaming: %s", exc)
+            put_event({"event": "error", "message": str(exc)})
+
+    loop.run_in_executor(_executor, _run)
+
+    while True:
+        event = await queue.get()
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        if event.get("event") in ("done", "error"):
+            break

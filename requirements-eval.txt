@@ -3,4 +3,4 @@
 # Requiere Python <= 3.12 (grpcio no tiene wheel para 3.13 en Windows aún)
 #
 # Uso: pip install -r requirements-eval.txt
-deepeval==1.4.4
+deepeval>=2.0.0

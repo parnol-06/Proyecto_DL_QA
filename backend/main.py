@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.config import ALLOWED_ORIGINS
 from backend.routes.generate import router
 from backend.routes.evaluate import router as eval_router
 
@@ -24,7 +25,7 @@ app = FastAPI(title="QA Test Case Generator")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

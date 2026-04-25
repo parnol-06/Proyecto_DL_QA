@@ -1,40 +1,44 @@
 #!/bin/sh
-set -e
 
 OLLAMA_BASE=${OLLAMA_HOST:-http://ollama:11434}
-MODEL=${OLLAMA_MODEL:-llama3.2}
+PRIMARY_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
 EMBED_MODEL="nomic-embed-text"
 
 # ── Esperar a Ollama ──────────────────────────────────────────────────────────
 echo "[entrypoint] Esperando a Ollama en $OLLAMA_BASE ..."
 until curl -sf "$OLLAMA_BASE/api/tags" > /dev/null 2>&1; do
-  sleep 2
+  sleep 3
 done
 echo "[entrypoint] Ollama disponible."
 
-# ── Descargar modelo principal ────────────────────────────────────────────────
-if ! curl -sf "$OLLAMA_BASE/api/tags" | grep -q "\"$MODEL\""; then
-  echo "[entrypoint] Descargando $MODEL (puede tardar varios minutos)..."
-  curl -s -X POST "$OLLAMA_BASE/api/pull" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\": \"$MODEL\"}" | tail -1
-  echo "[entrypoint] $MODEL descargado."
-else
-  echo "[entrypoint] $MODEL ya disponible."
-fi
+# ── Función de descarga ───────────────────────────────────────────────────────
+pull_model() {
+  MODEL_NAME=$1
 
-# ── Descargar modelo de embeddings para RAG ───────────────────────────────────
-if ! curl -sf "$OLLAMA_BASE/api/tags" | grep -q "\"$EMBED_MODEL\""; then
-  echo "[entrypoint] Descargando $EMBED_MODEL (necesario para RAG)..."
-  curl -s -X POST "$OLLAMA_BASE/api/pull" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\": \"$EMBED_MODEL\"}" | tail -1
-  echo "[entrypoint] $EMBED_MODEL descargado."
-else
-  echo "[entrypoint] $EMBED_MODEL ya disponible."
-fi
+  # Verificar si el modelo ya existe (coincidencia exacta en el campo "name")
+  if curl -sf "$OLLAMA_BASE/api/tags" | grep -q "\"name\":\"$MODEL_NAME\""; then
+    echo "[entrypoint] $MODEL_NAME ya disponible."
+    return 0
+  fi
 
-# ── Configurar Opik (non-interactive, force=True evita prompts en Docker) ─────
+  echo "[entrypoint] Descargando $MODEL_NAME — esto puede tardar varios minutos..."
+
+  # Mostrar progreso real (sin -s); --no-buffer para ver líneas conforme llegan
+  if curl --no-buffer -X POST "$OLLAMA_BASE/api/pull" \
+       -H "Content-Type: application/json" \
+       -d "{\"name\": \"$MODEL_NAME\"}"; then
+    echo ""
+    echo "[entrypoint] $MODEL_NAME descargado correctamente."
+  else
+    echo "[entrypoint] ADVERTENCIA: no se pudo descargar $MODEL_NAME (continuando de todas formas)."
+  fi
+}
+
+# ── Descargar modelos ─────────────────────────────────────────────────────────
+pull_model "$PRIMARY_MODEL"
+pull_model "$EMBED_MODEL"
+
+# ── Configurar Opik ───────────────────────────────────────────────────────────
 if [ -n "$OPIK_API_KEY" ]; then
   echo "[entrypoint] Configurando Opik (workspace=$OPIK_WORKSPACE, proyecto=$OPIK_PROJECT_NAME)..."
   python -c "
@@ -47,6 +51,20 @@ opik.configure(
 print('[entrypoint] Opik configurado correctamente.')
 " || echo "[entrypoint] Advertencia: Opik no pudo configurarse (continuando sin trazas)."
 fi
+
+# ── Construir índice RAG si no existe ─────────────────────────────────────────
+echo "[entrypoint] Verificando índice RAG..."
+python -c "
+import sys, os
+sys.path.insert(0, '/app')
+from backend.services.rag_service import is_index_built, build_index
+if not is_index_built():
+    print('[entrypoint] Construyendo índice RAG desde corpus/...')
+    n = build_index()
+    print(f'[entrypoint] Índice construido: {n} chunks.')
+else:
+    print('[entrypoint] Índice RAG ya existe.')
+" || echo "[entrypoint] Advertencia: no se pudo construir el índice RAG."
 
 # ── Iniciar servidor ──────────────────────────────────────────────────────────
 echo "[entrypoint] Iniciando servidor FastAPI en :8000 ..."

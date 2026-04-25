@@ -34,10 +34,10 @@ async function loadModelStatus(modelName) {
     const json = await res.json();
     if (json.loaded) {
       dot.style.background = 'var(--green)';
-      lbl.textContent = 'cargado';
+      lbl.textContent = 'disponible';
     } else {
       dot.style.background = 'var(--amber)';
-      lbl.textContent = 'no cargado';
+      lbl.textContent = 'no descargado';
     }
   } catch {
     dot.style.background = 'var(--muted)';

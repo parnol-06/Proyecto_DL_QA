@@ -38,6 +38,31 @@ async def generate_stream(req: GenerateRequest):
     )
 
 
+@router.post("/generate/agents/stream")
+async def generate_agents_stream(req: AgentGenerateRequest):
+    """Pipeline SSE: emite un evento tras cada agente para renderizado progresivo."""
+    try:
+        from backend.services.agent_service import stream_agent_pipeline
+        from fastapi.responses import StreamingResponse
+
+        rag_context = ""
+        if req.use_rag:
+            try:
+                from backend.services.rag_service import semantic_search
+                rag_context = semantic_search(req.user_story)
+            except Exception as exc:
+                logger.warning("RAG no disponible en /generate/agents/stream: %s", exc)
+
+        return StreamingResponse(
+            stream_agent_pipeline(req, rag_context),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    except Exception as e:
+        logger.error("Error iniciando pipeline streaming | %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Error en agentes: {str(e)}")
+
+
 @router.post("/generate/agents", response_model=AgentGenerateResponse)
 async def generate_agents(req: AgentGenerateRequest):
     """Pipeline de 2 agentes CrewAI: Generador + Revisor de Calidad."""
@@ -106,21 +131,31 @@ async def rag_status():
         return {"built": False, "chunk_count": 0, "error": str(exc)}
 
 
+def _extract_model_names(resp) -> list[str]:
+    """Compatible con ollama SDK antiguo (dict) y nuevo (objetos Pydantic)."""
+    raw = resp.get("models", []) if isinstance(resp, dict) else getattr(resp, "models", [])
+    names = []
+    for m in raw:
+        if isinstance(m, dict):
+            names.append(m.get("name") or m.get("model", ""))
+        else:
+            names.append(getattr(m, "name", None) or getattr(m, "model", ""))
+    return [n for n in names if n]
+
+
 @router.get("/models")
 async def list_models():
     try:
-        models = ollama.list()
-        return {"models": [m["name"] for m in models.get("models", [])]}
+        return {"models": _extract_model_names(ollama.list())}
     except Exception:
-        return {"models": ["llama3.2", "mistral", "phi3"]}
+        return {"models": ["qwen2.5:7b", "qwen2.5:3b", "llama3.2"]}
 
 
 @router.get("/health")
 async def health():
     try:
-        models_resp = ollama.list()
-        models_count = len(models_resp.get("models", []))
-        return {"status": "ok", "ollama": True, "models_count": models_count}
+        names = _extract_model_names(ollama.list())
+        return {"status": "ok", "ollama": True, "models_count": len(names)}
     except Exception:
         return {"status": "degraded", "ollama": False, "models_count": 0}
 
@@ -128,9 +163,9 @@ async def health():
 @router.get("/model-status")
 async def model_status(model: str = Query(..., description="Nombre del modelo")):
     try:
-        ps_resp = ollama.ps()
-        running = ps_resp.get("models", [])
-        loaded = any(m.get("name", "").startswith(model) for m in running)
+        # Verifica si el modelo está descargado (no si está en RAM)
+        available = _extract_model_names(ollama.list())
+        loaded = any(name.startswith(model) or model.startswith(name.split(":")[0]) for name in available)
         return {"model": model, "loaded": loaded}
     except Exception:
         return {"model": model, "loaded": False}
