@@ -229,5 +229,7 @@ function renderResult(d, skipTC = false) {
   renderCoverage(d.coverage_summary);
   document.getElementById('exportBar').classList.add('visible');
   updateKPIs(d);
+  // Pre-poblar las 5 métricas DeepEval en estado pendiente
+  renderMetricsDashboard({});
   // setWorkflowStep se llama desde app.js después de invocar renderResult
 }

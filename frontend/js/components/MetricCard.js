@@ -190,41 +190,97 @@ function _renderCatDistribution(testCases) {
     </div>`;
 }
 
+function MetricCardPending(metricKey) {
+  const meta = METRIC_META[metricKey];
+  if (!meta) return '';
+  const thresholdPct = Math.round(meta.threshold * 100);
+  return `
+    <div class="mc-card mc-pending" data-metric="${metricKey}" title="${meta.description}">
+      <div class="mc-header">
+        <span class="mc-label">${meta.label}</span>
+        <div class="mc-right">
+          <span class="mc-score" style="color:var(--muted)">—</span>
+          <span class="mc-badge mc-b-pending">PENDIENTE</span>
+        </div>
+      </div>
+      <div class="mc-bar-wrap">
+        <div class="mc-track">
+          <div class="mc-fill" style="width:0%;background:${meta.color};opacity:0.25"></div>
+          <div class="mc-thr" style="left:${thresholdPct}%">
+            <div class="mc-thr-line"></div>
+            <span class="mc-thr-lbl">${meta.threshold}</span>
+          </div>
+        </div>
+        <span class="mc-pct-lbl" style="color:var(--muted)">—</span>
+      </div>
+      <p class="mc-desc"><span class="mc-info-icon">ℹ</span>${meta.description}</p>
+    </div>`;
+}
+
 function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
   const contentEl = document.getElementById('metrics-dashboard-content');
   const emptyEl   = document.getElementById('empty-metrics');
   if (!contentEl) return;
 
-  if (!metricsObj || !Object.keys(metricsObj).length) {
+  // null = reset total (llamado desde clearAll vía DOM directo, no llega aquí)
+  if (!metricsObj) {
     contentEl.style.display = 'none';
     if (emptyEl) emptyEl.style.display = 'flex';
     return;
   }
 
   if (emptyEl) emptyEl.style.display = 'none';
+  contentEl.style.display = 'block';
 
   const keys      = Object.keys(METRIC_META);
-  const scores    = keys.map(k => metricsObj[k]).filter(v => typeof v === 'number');
-  const overall   = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const passCount = keys.filter(k => typeof metricsObj[k] === 'number' && metricsObj[k] >= METRIC_META[k].threshold).length;
-  const doneCount = scores.length;
+  const evaluated = keys.filter(k => typeof metricsObj[k] === 'number');
+  const doneCount = evaluated.length;
+  const total     = keys.length;
 
-  const overallStatus = overall >= 0.70 ? 'pass' : overall >= 0.60 ? 'warn' : 'fail';
-  const overallLabel  = { pass: 'PASS', warn: 'WARN', fail: 'FAIL' }[overallStatus];
-  const qualityText   = {
-    pass: 'Suite de alta calidad — lista para producción',
-    warn: 'Suite aceptable — hay mejoras recomendadas',
-    fail: 'Suite necesita revisión antes de usarse',
-  }[overallStatus];
+  // ── Sin métricas aún: mostrar las 5 en estado pendiente ──────────────────
+  if (doneCount === 0) {
+    contentEl.innerHTML = `
+      <div class="mc-pending-header">
+        <span class="mc-overall-label">Evaluación DeepEval</span>
+        <span class="mc-real-tag">5 métricas · Ollama local</span>
+        <p class="mc-pending-hint">
+          Haz clic en <strong>Evaluar con DeepEval</strong> para analizar la calidad de la suite generada.
+        </p>
+      </div>
+      <div class="mc-grid">
+        ${keys.map(k => MetricCardPending(k)).join('')}
+      </div>`;
+    return;
+  }
 
-  const radarSvg = _renderRadar(metricsObj);
+  // ── Con métricas (parcial o completo) ─────────────────────────────────────
+  const scores     = evaluated.map(k => metricsObj[k]);
+  const overall    = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const passCount  = evaluated.filter(k => metricsObj[k] >= METRIC_META[k].threshold).length;
+  const isComplete = doneCount === total;
+
+  const overallStatus = !isComplete   ? 'pending'
+                      : overall >= 0.70 ? 'pass'
+                      : overall >= 0.60 ? 'warn' : 'fail';
+  const statusLabel   = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', pending: `${doneCount}/${total}` }[overallStatus];
+  const qualityText   = !isComplete
+    ? `Evaluando… ${doneCount} de ${total} métricas completadas`
+    : ({ pass: 'Suite de alta calidad — lista para producción',
+         warn: 'Suite aceptable — hay mejoras recomendadas',
+         fail: 'Suite necesita revisión antes de usarse' })[overallStatus];
+
+  const radarSvg     = isComplete ? _renderRadar(metricsObj) : '';
+  const scoreColor   = isComplete
+    ? `mc-s-${overallStatus}`
+    : 'style="color:var(--muted)"';
+  const badgeClass   = isComplete ? `mc-b-${overallStatus}` : 'mc-b-pending';
 
   contentEl.innerHTML = `
     <div class="mc-overall">
       <div class="mc-overall-left">
         <span class="mc-overall-label">Evaluación DeepEval</span>
         <span class="mc-real-tag">real · Ollama local</span>
-        <p class="mc-quality-text mc-s-${overallStatus}">${qualityText}</p>
+        <p class="mc-quality-text ${isComplete ? `mc-s-${overallStatus}` : ''}" style="${!isComplete ? 'color:var(--muted)' : ''}">${qualityText}</p>
         <div class="mc-pass-rate">
           <span class="mc-pass-pill">${passCount}/${doneCount} métricas PASS</span>
           ${testCases ? `<span class="mc-tc-pill">${testCases.length} test cases</span>` : ''}
@@ -233,8 +289,8 @@ function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
       <div class="mc-overall-right">
         ${radarSvg}
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-          <span class="mc-overall-score mc-s-${overallStatus}">${overall.toFixed(2)}</span>
-          <span class="mc-badge mc-b-${overallStatus} mc-overall-badge">${overallLabel}</span>
+          <span class="mc-overall-score ${isComplete ? scoreColor : ''}" ${!isComplete ? 'style="color:var(--muted)"' : ''}>${overall.toFixed(2)}</span>
+          <span class="mc-badge ${badgeClass} mc-overall-badge">${statusLabel}</span>
         </div>
       </div>
     </div>
@@ -244,16 +300,17 @@ function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
     <div class="mc-grid">
       ${keys.map(k => {
         const v = metricsObj[k];
-        return typeof v === 'number' ? MetricCard(k, v, reasonsObj[k] || null) : '';
+        return typeof v === 'number'
+          ? MetricCard(k, v, reasonsObj[k] || null)
+          : MetricCardPending(k);
       }).join('')}
     </div>`;
 
-  contentEl.style.display = 'block';
-
-  // Sincronizar las barras del sidebar también
-  Object.entries(metricsObj).forEach(([metricKey, score]) => {
-    const shortKey = METRIC_KEY_MAP[metricKey];
-    if (!shortKey || typeof score !== 'number') return;
+  // Sincronizar barras del sidebar
+  evaluated.forEach(k => {
+    const score    = metricsObj[k];
+    const shortKey = METRIC_KEY_MAP[k];
+    if (!shortKey) return;
     const bar     = document.getElementById('bar-' + shortKey);
     const scoreEl = document.getElementById('score-' + shortKey);
     if (bar) bar.style.width = Math.round(score * 100) + '%';

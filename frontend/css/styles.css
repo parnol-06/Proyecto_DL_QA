@@ -844,9 +844,23 @@ svg.ring text { font-family: var(--font-head); }
   transition: border-color 0.2s; cursor: default;
 }
 .mc-card:hover { border-color: var(--border2); }
-.mc-pass { border-left-color: var(--green); }
-.mc-warn { border-left-color: var(--amber); }
-.mc-fail { border-left-color: var(--red); }
+.mc-pass    { border-left-color: var(--green); }
+.mc-warn    { border-left-color: var(--amber); }
+.mc-fail    { border-left-color: var(--red); }
+.mc-pending { border-left-color: var(--border); opacity: 0.65; }
+
+.mc-b-pending {
+  background: var(--surface3); color: var(--muted);
+  font-size: 9px; letter-spacing: 0.05em;
+}
+
+.mc-pending-header {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px 0 14px;
+}
+.mc-pending-hint {
+  font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.5;
+}
 
 .mc-header {
   display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px;

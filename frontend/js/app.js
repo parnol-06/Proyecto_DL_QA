@@ -658,12 +658,9 @@ async function evaluate() {
   btn.querySelector('span').textContent = '⟳';
   _hideEvalTimeHint();
 
-  // Resetear métricas
+  // Resetear métricas — mostrar las 5 en estado pendiente mientras evalúa
   ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => setMetric(k, 0));
-  const dashContent = document.getElementById('metrics-dashboard-content');
-  if (dashContent) { dashContent.innerHTML = ''; dashContent.style.display = 'none'; }
-  const emptyMetrics = document.getElementById('empty-metrics');
-  if (emptyMetrics) emptyMetrics.style.display = 'flex';
+  renderMetricsDashboard({});
   const miniContent = document.getElementById('metrics-mini-content');
   const miniEmpty   = document.getElementById('metrics-mini-empty');
   if (miniContent) miniContent.style.display = 'none';
