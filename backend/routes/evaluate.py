@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 async def evaluate(req: EvaluateRequest):
     try:
         return await run_evaluation(req)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:

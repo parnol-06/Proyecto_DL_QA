@@ -70,6 +70,14 @@ def _parse_reviewer_output(text: str) -> dict:
     }
 
 
+def _build_category_dist(tc_count: int, categories: list) -> list[tuple[str, int]]:
+    n = len(categories)
+    if n == 0:
+        return []
+    base, rem = divmod(tc_count, n)
+    return [(cat, base + (1 if i < rem else 0)) for i, cat in enumerate(categories)]
+
+
 def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
     """Construye los agentes y tareas CrewAI reutilizables."""
     from crewai import Agent, Task, LLM
@@ -83,16 +91,24 @@ def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
         if rag_context else ""
     )
 
+    all_cats   = ["happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"]
+    active_cats = req.categories if req.categories else all_cats
+    tc_count    = getattr(req, "tc_count",   10)
+    edge_count  = getattr(req, "edge_count",  4)
+    bug_count   = getattr(req, "bug_count",   3)
+    dist        = _build_category_dist(tc_count, active_cats)
+    dist_lines  = "\n".join(f"  - {cat}: {count} caso{'s' if count != 1 else ''}" for cat, count in dist)
+
     generator = Agent(
         role="QA Test Case Generator",
-        goal="Generar una suite completa y detallada de casos de prueba estructurados en JSON para la historia de usuario indicada",
+        goal=f"Generar exactamente {tc_count} casos de prueba distribuidos por categoría según las instrucciones de la tarea",
         backstory=(
             "Eres un ingeniero QA senior con 15 años de experiencia en pruebas de software. "
             "Conoces a fondo técnicas como partición de equivalencia, análisis de valores límite "
-            "y pruebas de seguridad. Siempre generas al menos 12 casos de prueba cubriendo todas "
-            "las categorías: happy_path, caso_limite, negativo, seguridad, rendimiento, "
-            "usabilidad y compatibilidad. Cada caso tiene mínimo 5 pasos detallados y "
-            "criterios de aceptación medibles. Respondes SIEMPRE en español."
+            "y pruebas de seguridad. Generas EXACTAMENTE la cantidad de casos solicitada, "
+            "respetando escrupulosamente la distribución por categorías indicada. "
+            "Cada caso tiene mínimo 5 pasos detallados y criterios de aceptación medibles. "
+            "Respondes SIEMPRE en español."
         ),
         llm=llm, allow_delegation=False, verbose=False,
     )
@@ -122,13 +138,17 @@ def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
 
     task_generate = Task(
         description=(
-            f"Genera una suite completa de casos de prueba para la siguiente historia de usuario.\n\n"
+            f"Genera una suite de casos de prueba para la siguiente historia de usuario.\n\n"
             f"HISTORIA DE USUARIO:\n{req.user_story}\n\n"
             f"CONTEXTO ADICIONAL: {req.context or 'Ninguno'}"
             f"{rag_section}\n\n"
+            f"DISTRIBUCION EXACTA DE TEST CASES A GENERAR (total: {tc_count}):\n"
+            f"{dist_lines}\n\n"
             "INSTRUCCIONES:\n"
-            "- Genera MÍNIMO 12 casos de prueba\n"
-            "- Cubre las 7 categorías: happy_path, caso_limite, negativo, seguridad, rendimiento, usabilidad, compatibilidad\n"
+            f"- Genera EXACTAMENTE {tc_count} test cases respetando la distribución anterior\n"
+            f"- El campo 'category' de cada caso DEBE ser exactamente uno de: {', '.join(active_cats)}\n"
+            f"- Genera EXACTAMENTE {edge_count} edge scenarios\n"
+            f"- Genera EXACTAMENTE {bug_count} bugs potenciales\n"
             "- Cada caso debe tener mínimo 5 pasos detallados y específicos\n"
             "- Los casos de rendimiento deben incluir valores numéricos concretos (tiempos, usuarios)\n"
             "- Los casos de seguridad deben especificar el vector de ataque\n"
@@ -349,10 +369,10 @@ async def run_agent_pipeline(
 
     try:
         # Correr CrewAI en executor para no bloquear el event loop
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            _executor,
-            lambda: _run_crew(req, rag_context),
+        loop = asyncio.get_running_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_executor, lambda: _run_crew(req, rag_context)),
+            timeout=300.0,
         )
 
         parsed_data     = result["parsed_data"]

@@ -7,7 +7,9 @@ import time
 
 import ollama
 
-from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
+from backend.config import OLLAMA_HOST, OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
+
+_ollama = ollama.Client(host=OLLAMA_HOST)
 from backend.schemas.models import GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
@@ -40,10 +42,10 @@ except Exception as exc:
 SYSTEM_PROMPT = """Eres un ingeniero QA senior EXPERTO con 15 años de experiencia. Tu trabajo es ser EXTREMADAMENTE DETALLISTA y minucioso.
 
 INSTRUCCION OBLIGATORIA N°1: TODA TU RESPUESTA DEBE SER EXCLUSIVAMENTE EN IDIOMA ESPAÑOL. ABSOLUTAMENTE NADA EN INGLES.
-INSTRUCCION OBLIGATORIA N°2: DEBES GENERAR MINIMO 12 CASOS DE PRUEBA. NO MENOS.
-INSTRUCCION OBLIGATORIA N°3: DEBES INCLUIR TODAS LAS CATEGORIAS: happy_path, caso_limite, negativo, seguridad, rendimiento, usabilidad, compatibilidad.
+INSTRUCCION OBLIGATORIA N°2: DEBES GENERAR EXACTAMENTE LA CANTIDAD DE CASOS INDICADA EN EL PROMPT. NI MAS NI MENOS.
+INSTRUCCION OBLIGATORIA N°3: DEBES RESPETAR LA DISTRIBUCION POR CATEGORIA DEL PROMPT. EL CAMPO "category" DEBE COINCIDIR EXACTAMENTE CON LA CATEGORIA ASIGNADA.
 INSTRUCCION OBLIGATORIA N°4: CADA CASO DE PRUEBA DEBE TENER MINIMO 5 PASOS DETALLADOS.
-INSTRUCCION OBLIGATORIA N°5: NO GENERES SOLO CASOS FUNCIONALES BASICOS. DEBES CUBRIR TODOS LOS TIPOS DE PRUEBA.
+INSTRUCCION OBLIGATORIA N°5: NO GENERES SOLO CASOS FUNCIONALES BASICOS. DEBES CUBRIR TODOS LOS TIPOS DE PRUEBA INDICADOS.
 INSTRUCCION OBLIGATORIA N°6: CADA PASO DEBE SER ESPECIFICO, NO GENERICO.
 INSTRUCCION OBLIGATORIA N°7: LOS CASOS NO FUNCIONALES (RENDIMIENTO, SEGURIDAD, USABILIDAD) DEBEN TENER CONDICIONES Y RESULTADOS CUANTIFICABLES MEDIBLES. NO GENERICOS.
 INSTRUCCION OBLIGATORIA N°8: PARA CASOS DE RENDIMIENTO SIEMPRE ESPECIFICA TIEMPOS MAXIMOS, CARGA Y NUMERO DE USUARIOS CONCRETOS.
@@ -93,6 +95,15 @@ La estructura JSON debe ser:
 }"""
 
 
+def _distribute_categories(tc_count: int, categories: list) -> list[tuple[str, int]]:
+    """Reparte tc_count lo más equitativamente posible entre las categorías."""
+    n = len(categories)
+    if n == 0:
+        return []
+    base, rem = divmod(tc_count, n)
+    return [(cat, base + (1 if i < rem else 0)) for i, cat in enumerate(categories)]
+
+
 def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
     rag_section = (
         f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA (usa esta información para enriquecer los casos):\n"
@@ -102,7 +113,13 @@ def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
     cats = getattr(req, "categories", [])
     all_cats = ["happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"]
     active_cats = cats if cats else all_cats
-    cat_list = ", ".join(active_cats)
+
+    tc_count   = getattr(req, "tc_count",   10)
+    edge_count = getattr(req, "edge_count",  4)
+    bug_count  = getattr(req, "bug_count",   3)
+
+    dist = _distribute_categories(tc_count, active_cats)
+    dist_lines = "\n".join(f"  - {cat}: {count} caso{'s' if count != 1 else ''}" for cat, count in dist)
 
     return f"""Historia de Usuario / Requisito:
 {req.user_story}
@@ -111,13 +128,19 @@ Contexto adicional:
 {req.context if req.context else 'Ninguno'}
 {rag_section}
 INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
-Ninguna palabra, descripcion, titulo o texto debe estar en ingles.
 
-CATEGORIAS A GENERAR: {cat_list}
-Solo genera casos de prueba para las categorías listadas arriba. No uses otras categorías.
+DISTRIBUCION EXACTA DE TEST CASES A GENERAR (total: {tc_count}):
+{dist_lines}
 
-Genera casos de prueba completos, escenarios limite y bugs potenciales para lo anterior.
-GENERA MINIMO 12 CASOS DE PRUEBA.
+REGLAS DE DISTRIBUCION:
+- Genera EXACTAMENTE {tc_count} test cases en total.
+- Genera EXACTAMENTE el número indicado para CADA categoría, ni uno más ni uno menos.
+- El campo "category" de cada caso DEBE ser exactamente uno de: {", ".join(active_cats)}
+- Genera los casos en el orden de la distribución: primero todos los de "{dist[0][0]}", luego los de la siguiente categoría, etc.
+
+EDGE SCENARIOS: Genera EXACTAMENTE {edge_count} escenarios edge (array "edge_scenarios").
+BUGS POTENCIALES: Genera EXACTAMENTE {bug_count} bugs potenciales (array "potential_bugs").
+
 CADA CASO NO FUNCIONAL DEBE TENER VALORES NUMERICOS CONCRETOS Y MEDIBLES.
 CADA CASO DEBE TENER MINIMO 5 PASOS DETALLADOS Y ESPECIFICOS.
 Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
@@ -213,7 +236,7 @@ async def stream_generate_test_cases(req: GenerateRequest):
         buf = []
         try:
             t0 = time.monotonic()
-            for chunk in ollama.chat(model=req.model, messages=messages,
+            for chunk in _ollama.chat(model=req.model, messages=messages,
                                      options=options, stream=True):
                 token = chunk["message"]["content"]
                 buf.append(token)
@@ -274,11 +297,11 @@ async def stream_generate_test_cases(req: GenerateRequest):
 if _OPIK_ENABLED:
     @opik.track(name="generate_test_cases", project_name=OPIK_PROJECT_NAME)
     def _tracked_ollama_call(user_story: str, model: str, messages: list, options: dict) -> str:
-        response = ollama.chat(model=model, messages=messages, options=options)
+        response = _ollama.chat(model=model, messages=messages, options=options)
         return response["message"]["content"]
 else:
     def _tracked_ollama_call(user_story: str, model: str, messages: list, options: dict) -> str:
-        response = ollama.chat(model=model, messages=messages, options=options)
+        response = _ollama.chat(model=model, messages=messages, options=options)
         return response["message"]["content"]
 
 

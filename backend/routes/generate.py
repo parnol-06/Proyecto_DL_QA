@@ -1,18 +1,25 @@
+import asyncio
+import json
 import logging
 
 import ollama
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from backend.config import OLLAMA_HOST, OLLAMA_CONTEXT_SIZE
 from backend.schemas.models import (
     GenerateRequest, GenerateResponse,
     AgentGenerateRequest, AgentGenerateResponse,
     RegenerateTCRequest,
 )
 from backend.services.llm_service import generate_test_cases, stream_generate_test_cases
+from backend.services.agent_service import run_agent_pipeline, stream_agent_pipeline
+from backend.services.rag_service import semantic_search
+from backend.utils.json_utils import find_first_json_object
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_ollama = ollama.Client(host=OLLAMA_HOST)
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -42,13 +49,9 @@ async def generate_stream(req: GenerateRequest):
 async def generate_agents_stream(req: AgentGenerateRequest):
     """Pipeline SSE: emite un evento tras cada agente para renderizado progresivo."""
     try:
-        from backend.services.agent_service import stream_agent_pipeline
-        from fastapi.responses import StreamingResponse
-
         rag_context = ""
         if req.use_rag:
             try:
-                from backend.services.rag_service import semantic_search
                 rag_context = semantic_search(req.user_story)
             except Exception as exc:
                 logger.warning("RAG no disponible en /generate/agents/stream: %s", exc)
@@ -65,14 +68,11 @@ async def generate_agents_stream(req: AgentGenerateRequest):
 
 @router.post("/generate/agents", response_model=AgentGenerateResponse)
 async def generate_agents(req: AgentGenerateRequest):
-    """Pipeline de 2 agentes CrewAI: Generador + Revisor de Calidad."""
+    """Pipeline de 3 agentes CrewAI: Generador + Revisor + Optimizador."""
     try:
-        from backend.services.agent_service import run_agent_pipeline
-
         rag_context = ""
         if req.use_rag:
             try:
-                from backend.services.rag_service import semantic_search
                 rag_context = semantic_search(req.user_story)
             except Exception as exc:
                 logger.warning("RAG no disponible en /generate/agents: %s", exc)
@@ -89,11 +89,10 @@ async def generate_agents(req: AgentGenerateRequest):
 @router.post("/regenerate-tc")
 async def regenerate_tc(req: RegenerateTCRequest):
     """Regenera un único caso de prueba conservando su ID y categoría."""
-    import ollama as _ollama
-    from backend.config import OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE
-    import json, re
-
-    cat_hint = f" Genera exactamente 1 caso de prueba de categoría '{req.category}'." if req.category else " Genera exactamente 1 caso de prueba."
+    cat_hint = (
+        f" Genera exactamente 1 caso de prueba de categoría '{req.category}'."
+        if req.category else " Genera exactamente 1 caso de prueba."
+    )
     prompt = (
         f"Historia de usuario:\n{req.user_story}\n\n"
         f"Contexto: {req.context or 'Ninguno'}\n\n"
@@ -103,18 +102,38 @@ async def regenerate_tc(req: RegenerateTCRequest):
         '"preconditions":["..."],"steps":["..."],"expected_result":"...","test_type":"..."}'
     )
     try:
-        resp = _ollama.chat(
-            model=req.model,
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE},
+        loop = asyncio.get_running_loop()
+        resp = await loop.run_in_executor(
+            None,
+            lambda: _ollama.chat(
+                model=req.model,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE},
+            ),
         )
         content = resp["message"]["content"]
-        match = re.search(r"\{[\s\S]*\}", content)
-        if not match:
+        raw_json = find_first_json_object(content)
+        if not raw_json:
             raise ValueError("El modelo no devolvió un JSON válido")
-        tc = json.loads(match.group())
+        tc = json.loads(raw_json)
         tc["id"] = req.tc_id
         return {"test_case": tc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pull-model")
+async def pull_model(body: dict):
+    """Descarga un modelo Ollama. Útil para descargar modelos desde la UI."""
+    model = body.get("model", "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Nombre de modelo requerido")
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: _ollama.pull(model))
+        return {"status": "ok", "model": model}
+    except ollama.ResponseError as e:
+        raise HTTPException(status_code=503, detail=f"Error descargando modelo: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -146,15 +165,15 @@ def _extract_model_names(resp) -> list[str]:
 @router.get("/models")
 async def list_models():
     try:
-        return {"models": _extract_model_names(ollama.list())}
+        return {"models": _extract_model_names(_ollama.list()), "ollama_available": True}
     except Exception:
-        return {"models": ["qwen2.5:7b", "qwen2.5:3b", "llama3.2"]}
+        return {"models": [], "ollama_available": False}
 
 
 @router.get("/health")
 async def health():
     try:
-        names = _extract_model_names(ollama.list())
+        names = _extract_model_names(_ollama.list())
         return {"status": "ok", "ollama": True, "models_count": len(names)}
     except Exception:
         return {"status": "degraded", "ollama": False, "models_count": 0}
@@ -163,8 +182,7 @@ async def health():
 @router.get("/model-status")
 async def model_status(model: str = Query(..., description="Nombre del modelo")):
     try:
-        # Verifica si el modelo está descargado (no si está en RAM)
-        available = _extract_model_names(ollama.list())
+        available = _extract_model_names(_ollama.list())
         loaded = any(name.startswith(model) or model.startswith(name.split(":")[0]) for name in available)
         return {"model": model, "loaded": loaded}
     except Exception:

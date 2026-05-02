@@ -10,6 +10,9 @@ class GenerateRequest(BaseModel):
     temperature: float = Field(0.25, ge=0.0, le=1.0, description="Temperatura del LLM (0.0–1.0)")
     use_rag: bool = Field(False, description="Enriquecer el prompt con contexto del corpus QA")
     categories: list[str] = Field(default_factory=list, description="Categorías a generar; vacío = todas")
+    tc_count: int = Field(10, ge=1, le=50, description="Cantidad de test cases a generar")
+    edge_count: int = Field(4, ge=0, le=20, description="Cantidad de edge scenarios a generar")
+    bug_count: int = Field(3, ge=0, le=20, description="Cantidad de bugs potenciales a generar")
 
 
 class GenerateResponse(BaseModel):
@@ -33,6 +36,9 @@ class AgentGenerateRequest(BaseModel):
     temperature: float = Field(0.25, ge=0.0, le=1.0)
     use_rag: bool = False
     categories: list[str] = Field(default_factory=list)
+    tc_count: int = Field(10, ge=1, le=50)
+    edge_count: int = Field(4, ge=0, le=20)
+    bug_count: int = Field(3, ge=0, le=20)
 
 
 class AgentGenerateResponse(BaseModel):
@@ -59,6 +65,7 @@ class EvaluateRequest(BaseModel):
     requirement: str = Field(..., min_length=20, max_length=3000)
     generated_output: dict
     model: str = OLLAMA_MODEL
+    eval_model: str = Field("", description="Modelo para evaluación GEval (debe diferir del de generación para evitar sesgo)")
 
 
 class EvaluateResponse(BaseModel):

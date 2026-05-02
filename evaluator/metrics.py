@@ -1,7 +1,11 @@
 """
 DeepEval Metrics for QA Test Case Generator
-Evaluates: Coverage, Relevancy, Consistency
+Evaluates: Coverage, Relevancy, Consistency, Step Specificity, Non-Functional Balance
 """
+
+import os
+os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+os.environ.setdefault("DEEPEVAL_ERROR_REPORTING_OPT_OUT", "YES")
 
 from deepeval import evaluate
 from deepeval.metrics import (
@@ -11,12 +15,15 @@ from deepeval.metrics import (
 )
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from deepeval.models.base_model import DeepEvalBaseLLM
+import logging
 import ollama
 import json
-import os
 from typing import Generator, Optional
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+_EVAL_MODEL    = os.getenv("OLLAMA_EVAL_MODEL", "llama3.2")
 
 
 # ─────────────────────────────────────────────
@@ -131,20 +138,46 @@ def make_nonfunctional_balance_metric(model: DeepEvalBaseLLM) -> GEval:
 
 
 # ─────────────────────────────────────────────
-# 3. Main evaluation runner
+# 3. Validación estructural del output
+# ─────────────────────────────────────────────
+def _validate_generated_output(output: dict) -> dict:
+    """Valida estructura mínima antes de evaluar. Lanza ValueError si falta algo crítico."""
+    if not isinstance(output, dict):
+        raise ValueError(f"generated_output debe ser dict, recibido: {type(output)}")
+    test_cases = output.get("test_cases", [])
+    if not isinstance(test_cases, list) or len(test_cases) == 0:
+        raise ValueError("generated_output debe tener al menos un test_case en 'test_cases'")
+    required = {"id", "title", "category", "steps", "expected_result"}
+    missing = required - set(test_cases[0].keys())
+    if missing:
+        raise ValueError(f"test_cases[0] falta campos requeridos: {missing}")
+    return output
+
+
+# ─────────────────────────────────────────────
+# 4. Main evaluation runner
 # ─────────────────────────────────────────────
 def evaluate_test_cases(
     user_story: str,
     generated_output: dict,
     model_name: str = _DEFAULT_MODEL,
+    eval_model_name: str | None = None,
 ) -> dict:
     """
     Runs DeepEval metrics on the generated test cases.
+    Uses eval_model_name (default: OLLAMA_EVAL_MODEL) for evaluation to avoid self-evaluation bias.
     Returns a dict with scores and verdicts.
     """
-    eval_model = OllamaEvalModel(model_name)
+    validated = _validate_generated_output(generated_output)
+    effective_eval = eval_model_name or _EVAL_MODEL
+    if effective_eval == model_name:
+        logger.warning(
+            "El modelo de evaluación (%s) coincide con el de generación — posible sesgo de auto-evaluación",
+            model_name,
+        )
+    eval_model = OllamaEvalModel(effective_eval)
 
-    actual_output = json.dumps(generated_output, indent=2)
+    actual_output = json.dumps(validated, indent=2)
 
     test_case = LLMTestCase(
         input=user_story,
@@ -185,12 +218,12 @@ def evaluate_test_cases(
         "metrics": results,
         "overall_score": round(overall, 3),
         "all_passed": all_passed,
-        "model_used": f"ollama/{model_name}",
+        "model_used": f"ollama/{effective_eval}",
     }
 
 
 # ─────────────────────────────────────────────
-# 4. Streaming evaluation runner (yields one result per metric)
+# 5. Streaming evaluation runner (yields one result per metric)
 # ─────────────────────────────────────────────
 _METRIC_KEY_MAP = {
     "Test Coverage":         "coverage",
@@ -204,14 +237,18 @@ def stream_evaluate_test_cases(
     user_story: str,
     generated_output: dict,
     model_name: str = _DEFAULT_MODEL,
+    eval_model_name: str | None = None,
 ) -> Generator[dict, None, None]:
     """
     Same as evaluate_test_cases but yields each metric result as it completes.
+    Uses eval_model_name (default: OLLAMA_EVAL_MODEL) to avoid self-evaluation bias.
     Yields dicts with keys: metric, name, score, passed, threshold, reason, step, total.
     Final yield: {"done": True, "overall": float}.
     """
-    eval_model = OllamaEvalModel(model_name)
-    actual_output = json.dumps(generated_output, indent=2)
+    validated = _validate_generated_output(generated_output)
+    effective_eval = eval_model_name or _EVAL_MODEL
+    eval_model = OllamaEvalModel(effective_eval)
+    actual_output = json.dumps(validated, indent=2)
     test_case = LLMTestCase(input=user_story, actual_output=actual_output)
 
     factories = [

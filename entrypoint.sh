@@ -1,13 +1,39 @@
 #!/bin/sh
 
-OLLAMA_BASE=${OLLAMA_HOST:-http://host.docker.internal:11434}
+OLLAMA_BASE=${OLLAMA_HOST:-http://localhost:11434}
 
-# ── Esperar a Ollama ──────────────────────────────────────────────────────────
+# ── Esperar a Ollama (máximo 120 segundos) ───────────────────────────────────
 echo "[entrypoint] Esperando a Ollama en $OLLAMA_BASE ..."
+MAX_WAIT=120
+WAITED=0
 until curl -sf "$OLLAMA_BASE/api/tags" > /dev/null 2>&1; do
+  if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+    echo "[entrypoint] ERROR: Ollama no respondió en ${MAX_WAIT}s. Abortando." >&2
+    exit 1
+  fi
   sleep 3
+  WAITED=$((WAITED + 3))
 done
 echo "[entrypoint] Ollama disponible."
+
+# ── Verificar y descargar modelos requeridos ─────────────────────────────────
+REQUIRED_MODELS="${OLLAMA_MODEL:-qwen2.5:7b} nomic-embed-text"
+echo "[entrypoint] Verificando modelos requeridos: $REQUIRED_MODELS"
+for MODEL in $REQUIRED_MODELS; do
+  TAGS=$(curl -sf "$OLLAMA_BASE/api/tags" 2>/dev/null || echo "{}")
+  if echo "$TAGS" | grep -q "\"${MODEL}\""; then
+    echo "[entrypoint] Modelo '$MODEL' ya disponible."
+  else
+    echo "[entrypoint] Descargando modelo '$MODEL' ..."
+    if curl -sf -X POST "$OLLAMA_BASE/api/pull" \
+        -H 'Content-Type: application/json' \
+        -d "{\"name\": \"${MODEL}\"}" > /dev/null 2>&1; then
+      echo "[entrypoint] Modelo '$MODEL' descargado."
+    else
+      echo "[entrypoint] ADVERTENCIA: no se pudo descargar '$MODEL'. Continuando..."
+    fi
+  fi
+done
 
 # ── Configurar Opik ───────────────────────────────────────────────────────────
 if [ -n "$OPIK_API_KEY" ]; then

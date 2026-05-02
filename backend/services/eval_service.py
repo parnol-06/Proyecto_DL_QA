@@ -33,6 +33,7 @@ async def run_evaluation(req: EvaluateRequest) -> EvaluateResponse:
         user_story=req.requirement,
         generated_output=req.generated_output,
         model_name=req.model,
+        eval_model_name=req.eval_model or None,
     )
 
     metrics = raw.get("metrics", {})
@@ -59,7 +60,7 @@ async def stream_evaluation(req: EvaluateRequest):
 
     logger.info("Iniciando evaluación streaming | modelo=%s", req.model)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
 
     def _run_sync():
@@ -68,6 +69,7 @@ async def stream_evaluation(req: EvaluateRequest):
                 user_story=req.requirement,
                 generated_output=req.generated_output,
                 model_name=req.model,
+                eval_model_name=req.eval_model or None,
             ):
                 loop.call_soon_threadsafe(queue.put_nowait, event)
         except Exception as exc:
