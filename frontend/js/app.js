@@ -128,7 +128,7 @@ function clearAll() {
   const kpiScore = document.getElementById('kpi-score-val');
   if (kpiScore) { kpiScore.textContent = '—'; kpiScore.style.color = ''; }
 
-  setWorkflowStep('input');
+  WorkflowBar.reset();
   showToast('Resultados borrados', 'var(--muted2)');
 }
 
@@ -436,6 +436,7 @@ async function generate() {
   _timerInterval = setInterval(() => {
     const s = Math.round((Date.now() - _t0) / 1000);
     document.getElementById('btnText').textContent = 'Generando... ' + s + 's';
+    WorkflowBar.timer('generate', s + 's');
   }, 1000);
 
   const useRag = document.getElementById('ragToggle')?.checked ?? false;
@@ -472,8 +473,9 @@ async function generate() {
         const tcStreamed = (data.test_cases || []).length > 0 &&
                            document.querySelectorAll('#tc-list .tc-card').length > 0;
         renderResult(data, tcStreamed);
-        setWorkflowStep('evaluate');
         const elapsed = Math.round((Date.now() - _t0) / 1000);
+        WorkflowBar.timer('generate', elapsed + 's');
+        setWorkflowStep('evaluate');
         const tcCount = (data.test_cases || []).length;
         const ragTag  = useRag ? ' · RAG' : '';
         showToast(`${tcCount} casos generados en ${elapsed}s${ragTag}`);
@@ -525,6 +527,7 @@ async function generateAgents() {
   _timerInterval = setInterval(() => {
     const s = Math.round((Date.now() - _t0) / 1000);
     btnText.textContent = `Agentes trabajando... ${s}s`;
+    WorkflowBar.timer('generate', s + 's');
   }, 1000);
 
   const useRag      = document.getElementById('ragToggle')?.checked ?? false;
@@ -598,6 +601,8 @@ async function generateAgents() {
 
         const tcStreamed = document.querySelectorAll('#tc-list .tc-card').length > 0;
         renderResult(data, tcStreamed);
+        const elapsed = Math.round((Date.now() - _t0) / 1000);
+        WorkflowBar.timer('generate', elapsed + 's');
         setWorkflowStep('evaluate');
 
         if (data.agent_trace?.length) {
@@ -617,7 +622,6 @@ async function generateAgents() {
           }
         }
 
-        const elapsed     = Math.round((Date.now() - _t0) / 1000);
         const tcCount     = (data.test_cases || []).length;
         const fallbackTag = data.used_fallback ? ' (fallback)' : '';
         showToast(`${tcCount} casos · ${elapsed}s${fallbackTag}`);
@@ -714,6 +718,7 @@ async function evaluate() {
     const clock = document.getElementById('eval-timer-clock');
     if (clock) clock.textContent = _fmtTime(elapsed);
     btn.innerHTML = `<span>⟳</span> Evaluando... ${_fmtTime(elapsed)}`;
+    WorkflowBar.timer('evaluate', _fmtTime(elapsed));
   }, 1000);
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -772,6 +777,7 @@ async function evaluate() {
         const totalElapsed = Math.round((Date.now() - _t0) / 1000);
         clearInterval(_timerInterval);
         _hideEvalTimerBar();
+        WorkflowBar.timer('evaluate', _fmtTime(totalElapsed));
         Store.set('metrics', { ..._metricsCollected });
         renderMetricsDashboard(_metricsCollected, _reasonsCollected);
         updateKPIs(data, msg.overall);

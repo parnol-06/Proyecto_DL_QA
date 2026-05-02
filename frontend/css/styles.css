@@ -1035,6 +1035,16 @@ svg.ring text { font-family: var(--font-head); }
 .wf-step[data-state="done"] .wf-dot { background: var(--green); }
 .wf-step[data-state="done"] .wf-line { background: var(--green); opacity: 0.5; }
 
+/* Timer inline — aparece junto al label del paso activo o completado */
+.wf-timer {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  min-width: 0;
+}
+.wf-step[data-state="active"] .wf-timer { color: var(--accent2); }
+.wf-step[data-state="done"]   .wf-timer { color: var(--green); opacity: 0.75; }
+
 /* ═══════════════════════════════════════════════════════════════
    STREAM MONITOR (sm-*) — log en tiempo real del pipeline agentes
    ═══════════════════════════════════════════════════════════════ */

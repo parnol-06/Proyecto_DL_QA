@@ -1,5 +1,4 @@
 // components/WorkflowBar.js — Barra de progreso visible de las 4 fases del workflow.
-// Reemplaza los 4 divs ocultos que setWorkflowStep() manipulaba sin efecto visual.
 
 const WorkflowBar = (() => {
   const STEPS = [
@@ -18,7 +17,22 @@ const WorkflowBar = (() => {
     });
   }
 
-  function reset() { set('input'); }
+  // Muestra u oculta el contador de tiempo en un paso concreto.
+  // text = null → limpia el timer.
+  function timer(stepId, text) {
+    const el = document.getElementById('wf-timer-' + stepId);
+    if (!el) return;
+    el.textContent = text ?? '';
+  }
 
-  return { set, reset };
+  function clearAllTimers() {
+    STEPS.forEach(s => timer(s.id, null));
+  }
+
+  function reset() {
+    set('input');
+    clearAllTimers();
+  }
+
+  return { set, timer, clearAllTimers, reset };
 })();
