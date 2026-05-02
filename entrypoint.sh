@@ -1,6 +1,6 @@
 #!/bin/sh
 
-OLLAMA_BASE=${OLLAMA_HOST:-http://host.docker.internal:11434}
+OLLAMA_BASE=${OLLAMA_HOST:-http://localhost:11434}
 
 # ── Esperar a Ollama ──────────────────────────────────────────────────────────
 echo "[entrypoint] Esperando a Ollama en $OLLAMA_BASE ..."

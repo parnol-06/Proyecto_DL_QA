@@ -158,14 +158,16 @@ function collapseAll() {
 }
 
 function showMockMetrics(d) {
-  const tc  = (d.test_cases||[]).length;
-  const ed  = (d.edge_scenarios||[]).length;
-  const bg  = (d.potential_bugs||[]).length;
-  const pct = (d.coverage_summary||{}).estimated_coverage_percent || 0;
+  const coverage_pct = ((d.coverage_summary||{}).estimated_coverage_percent || 0) / 100;
+  const tc_count = (d.test_cases||[]).length;
+  
   setTimeout(() => {
-    setMetric('cov', Math.min(0.99, 0.4 + tc*0.04 + pct/200), true);
-    setMetric('rel', Math.min(0.99, 0.55 + ed*0.03 + tc*0.02), true);
-    setMetric('con', Math.min(0.99, 0.5  + bg*0.04 + tc*0.025), true);
+    // Cobertura REAL calculada en el backend
+    setMetric('cov', coverage_pct, true);
+    
+    // Otras métricas calculadas en base a cantidad real de casos
+    setMetric('rel', Math.min(0.99, 0.6 + (tc_count * 0.015)), true);
+    setMetric('con', Math.min(0.99, 0.65 + (tc_count * 0.012)), true);
   }, 600);
 }
 

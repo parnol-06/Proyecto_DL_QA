@@ -47,7 +47,9 @@ COPY --chown=appuser:appgroup corpus/       ./corpus/
 COPY --chown=appuser:appgroup evaluator/    ./evaluator/
 COPY --chown=appuser:appgroup entrypoint.sh ./
 
-RUN chmod +x entrypoint.sh
+# Fix Windows CRLF line endings for Linux container compatibility
+RUN sed -i 's/\r$//' entrypoint.sh \
+    && chmod +x entrypoint.sh
 
 USER appuser
 
