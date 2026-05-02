@@ -283,10 +283,8 @@ El sistema debe:
     <div id="agent-trace-list" style="display:none"></div>
   </div>
 
-  <!-- Panel: Métricas — Coverage summary + DeepEval dashboard -->
+  <!-- Panel: Métricas — DeepEval dashboard + Coverage summary -->
   <div class="panel" id="panel-metrics">
-    <!-- Coverage summary: se rellena al generar casos (sin necesidad de evaluar) -->
-    <div id="cov-content" class="cov-in-metrics" style="display:none"></div>
 
     <!-- Temporizador en vivo durante la evaluación DeepEval -->
     <div id="eval-timer-bar" style="display:none">
@@ -305,6 +303,9 @@ El sistema debe:
       <p>Evalúa los casos de prueba<br>para ver el análisis completo de calidad</p>
     </div>
     <div id="metrics-dashboard-content" style="display:none"></div>
+
+    <!-- Coverage summary: debajo del dashboard, se rellena al generar casos -->
+    <div id="cov-content" class="cov-in-metrics" style="display:none"></div>
   </div>
 
 </main>

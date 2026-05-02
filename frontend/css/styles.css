@@ -354,7 +354,7 @@ select option { background: var(--surface2); }
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 .btn-evaluate:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(34,211,238,0.05); }
-.btn-evaluate:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-evaluate:disabled { opacity: 0.85; cursor: not-allowed; }
 
 /* Export bar en right panel */
 .export-bar {
