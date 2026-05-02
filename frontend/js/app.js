@@ -82,7 +82,9 @@ function clearAll() {
 
   // Evaluate button
   document.getElementById('evaluateBtn').disabled = true;
+  document.getElementById('evaluateBtn').innerHTML = '<span>◈</span> Evaluar con DeepEval';
   _hideEvalTimeHint();
+  _hideEvalTimerBar();
 
   // Métricas mini bars (right panel)
   ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => {
@@ -340,6 +342,41 @@ function setAgentMode(on) {
   const agentInfo = document.getElementById('agentModeInfo');
   if (agentInfo) agentInfo.style.display = on ? 'block' : 'none';
   if (!on && typeof AgentPipeline !== 'undefined') AgentPipeline.hide();
+}
+
+// ── Temporizador en vivo para evaluación DeepEval ────────────────────────────
+function _fmtTime(secs) {
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function _showEvalTimerBar() {
+  const bar = document.getElementById('eval-timer-bar');
+  if (bar) bar.style.display = 'block';
+  const fill  = document.getElementById('eval-timer-fill');
+  const clock = document.getElementById('eval-timer-clock');
+  const step  = document.getElementById('eval-timer-step');
+  const label = document.getElementById('eval-timer-label');
+  if (fill)  fill.style.width        = '0%';
+  if (clock) clock.textContent       = '0s';
+  if (step)  step.textContent        = '0 / 5 métricas completadas';
+  if (label) label.textContent       = '⏱ Evaluando con DeepEval...';
+}
+
+function _hideEvalTimerBar() {
+  const bar = document.getElementById('eval-timer-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function _updateEvalTimerBar(elapsed, stepDone, total, metricName) {
+  const clock = document.getElementById('eval-timer-clock');
+  const fill  = document.getElementById('eval-timer-fill');
+  const step  = document.getElementById('eval-timer-step');
+  const label = document.getElementById('eval-timer-label');
+  if (clock) clock.textContent = _fmtTime(elapsed);
+  if (fill)  fill.style.width  = `${Math.round((stepDone / total) * 100)}%`;
+  if (step)  step.textContent  = `${stepDone} / ${total} métricas completadas`;
+  if (label && metricName) label.textContent = `⏱ Completada: ${metricName}`;
 }
 
 // ── Estimado de tiempo de evaluación DeepEval
@@ -666,7 +703,21 @@ async function evaluate() {
   if (miniContent) miniContent.style.display = 'none';
   if (miniEmpty)   miniEmpty.style.display   = 'flex';
 
-  showToast('Evaluando con DeepEval...', 'var(--cyan)');
+  // ── Temporizador en vivo ────────────────────────────────────────────────
+  const _t0 = Date.now();
+  let _timerInterval;
+  switchTab('metrics');
+  _showEvalTimerBar();
+
+  _timerInterval = setInterval(() => {
+    const elapsed = Math.round((Date.now() - _t0) / 1000);
+    const clock = document.getElementById('eval-timer-clock');
+    if (clock) clock.textContent = _fmtTime(elapsed);
+    btn.innerHTML = `<span>⟳</span> Evaluando... ${_fmtTime(elapsed)}`;
+  }, 1000);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  showToast('Evaluando con DeepEval... (puede tardar varios minutos)', 'var(--cyan)');
 
   const KEY_MAP = {
     coverage: 'cov', relevancy: 'rel', consistency: 'con',
@@ -677,8 +728,6 @@ async function evaluate() {
   const _reasonsCollected = {};
   let   _firstMetric      = true;
 
-  // Modelo de evaluación: el usuario puede elegir uno diferente al de generación
-  // para evitar sesgo de auto-evaluación. Si está vacío, el backend usa su default.
   const evalModelEl = document.getElementById('evalModelSelect');
   const evalModel   = evalModelEl?.value || document.getElementById('modelSelect').value;
 
@@ -700,13 +749,14 @@ async function evaluate() {
       if (msg.error) throw new Error(msg.error);
 
       if (msg.metric) {
+        const elapsed = Math.round((Date.now() - _t0) / 1000);
         const shortKey = KEY_MAP[msg.metric];
         if (shortKey) setMetric(shortKey, msg.score);
         _metricsCollected[msg.metric] = msg.score;
         if (msg.reason) _reasonsCollected[msg.metric] = msg.reason;
         renderMetricsDashboard(_metricsCollected, _reasonsCollected);
+        _updateEvalTimerBar(elapsed, msg.step, msg.total, msg.name);
 
-        // Mostrar sección mini en primer resultado
         if (_firstMetric) {
           _firstMetric = false;
           if (miniEmpty)   miniEmpty.style.display   = 'none';
@@ -719,20 +769,25 @@ async function evaluate() {
       }
 
       if (msg.done) {
+        const totalElapsed = Math.round((Date.now() - _t0) / 1000);
+        clearInterval(_timerInterval);
+        _hideEvalTimerBar();
         Store.set('metrics', { ..._metricsCollected });
         renderMetricsDashboard(_metricsCollected, _reasonsCollected);
         updateKPIs(data, msg.overall);
         setWorkflowStep('export');
-        showToast(`Evaluación completa · overall ${msg.overall.toFixed(2)}`);
-        switchTab('metrics');
+        showToast(`Evaluación completa en ${_fmtTime(totalElapsed)} · overall ${msg.overall.toFixed(2)}`);
       }
     }
 
   } catch (e) {
+    clearInterval(_timerInterval);
+    _hideEvalTimerBar();
     showToast('Error: ' + e.message, 'var(--red)');
   } finally {
+    clearInterval(_timerInterval);
     btn.disabled = false;
-    btn.querySelector('span').textContent = '◈';
+    btn.innerHTML = '<span>◈</span> Evaluar con DeepEval';
   }
 }
 

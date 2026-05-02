@@ -862,6 +862,32 @@ svg.ring text { font-family: var(--font-head); }
   font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.5;
 }
 
+/* ── Temporizador evaluación DeepEval ───────────────────────────────────── */
+#eval-timer-bar {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+}
+.eval-timer-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  font-size: 11px; color: var(--muted);
+}
+.eval-timer-clock {
+  font-family: var(--font-mono); font-size: 13px;
+  color: var(--accent2); font-weight: 600;
+}
+.eval-timer-track {
+  height: 5px; background: var(--surface3); border-radius: 3px;
+  overflow: hidden; margin-bottom: 7px;
+}
+.eval-timer-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 3px; transition: width 0.6s ease;
+}
+.eval-timer-steps {
+  font-size: 10px; color: var(--muted); font-family: var(--font-mono);
+}
+
 .mc-header {
   display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px;
 }

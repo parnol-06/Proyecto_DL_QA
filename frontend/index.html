@@ -288,6 +288,18 @@ El sistema debe:
     <!-- Coverage summary: se rellena al generar casos (sin necesidad de evaluar) -->
     <div id="cov-content" class="cov-in-metrics" style="display:none"></div>
 
+    <!-- Temporizador en vivo durante la evaluación DeepEval -->
+    <div id="eval-timer-bar" style="display:none">
+      <div class="eval-timer-header">
+        <span id="eval-timer-label">⏱ Evaluando con DeepEval...</span>
+        <span id="eval-timer-clock" class="eval-timer-clock">0s</span>
+      </div>
+      <div class="eval-timer-track">
+        <div id="eval-timer-fill" class="eval-timer-fill"></div>
+      </div>
+      <div class="eval-timer-steps" id="eval-timer-step">0 / 5 métricas completadas</div>
+    </div>
+
     <div class="empty" id="empty-metrics">
       <div class="empty-icon">◈</div>
       <p>Evalúa los casos de prueba<br>para ver el análisis completo de calidad</p>
