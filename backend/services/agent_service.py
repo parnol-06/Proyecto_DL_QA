@@ -14,7 +14,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.config import OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
+from backend.config import OLLAMA_HOST, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
 from backend.schemas.models import AgentGenerateRequest, AgentGenerateResponse, AgentTrace
 from backend.services.llm_service import _parse_llm_output, _build_response
 
@@ -82,9 +82,9 @@ def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
     """Construye los agentes y tareas CrewAI reutilizables."""
     from crewai import Agent, Task, LLM
 
-    model_tag = f"ollama/{req.model}"
-    base_url  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    llm = LLM(model=model_tag, base_url=base_url, temperature=req.temperature, max_tokens=4096)
+    model_tag   = f"ollama/{req.model}"
+    max_tokens  = max(4096, req.tc_count * 280 + req.edge_count * 120 + req.bug_count * 160 + 1000)
+    llm = LLM(model=model_tag, base_url=OLLAMA_HOST, temperature=req.temperature, max_tokens=max_tokens)
 
     rag_section = (
         f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA:\n{rag_context}\n"

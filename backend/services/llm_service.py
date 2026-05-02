@@ -10,6 +10,11 @@ import ollama
 from backend.config import OLLAMA_HOST, OLLAMA_TEMPERATURE, OLLAMA_CONTEXT_SIZE, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
 
 _ollama = ollama.Client(host=OLLAMA_HOST)
+
+
+def _calc_num_predict(tc_count: int, edge_count: int, bug_count: int) -> int:
+    # ~280 tokens por TC (JSON con 5+ pasos en español), ~120 edge, ~160 bug, ~1000 overhead
+    return max(4096, tc_count * 280 + edge_count * 120 + bug_count * 160 + 1000)
 from backend.schemas.models import GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
@@ -229,7 +234,9 @@ async def stream_generate_test_cases(req: GenerateRequest):
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": _build_prompt(req, rag_context)},
     ]
-    options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7, "num_predict": 4096}
+    num_predict = _calc_num_predict(req.tc_count, req.edge_count, req.bug_count)
+    num_ctx     = max(OLLAMA_CONTEXT_SIZE, num_predict + 3000)
+    options = {"temperature": req.temperature, "num_ctx": num_ctx, "top_p": 0.7, "num_predict": num_predict}
 
     def _stream_sync() -> None:
         """Corre en hilo separado — nunca bloquea el event loop."""
@@ -322,7 +329,9 @@ async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": _build_prompt(req, rag_context)},
         ]
-        options = {"temperature": req.temperature, "num_ctx": OLLAMA_CONTEXT_SIZE, "top_p": 0.7, "num_predict": 4096}
+        num_predict = _calc_num_predict(req.tc_count, req.edge_count, req.bug_count)
+        num_ctx     = max(OLLAMA_CONTEXT_SIZE, num_predict + 3000)
+        options = {"temperature": req.temperature, "num_ctx": num_ctx, "top_p": 0.7, "num_predict": num_predict}
 
         content = _tracked_ollama_call(req.user_story[:400], req.model, messages, options)
 

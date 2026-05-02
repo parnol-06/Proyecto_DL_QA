@@ -82,6 +82,7 @@ function clearAll() {
 
   // Evaluate button
   document.getElementById('evaluateBtn').disabled = true;
+  _hideEvalTimeHint();
 
   // Métricas mini bars (right panel)
   ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => {
@@ -341,6 +342,25 @@ function setAgentMode(on) {
   if (!on && typeof AgentPipeline !== 'undefined') AgentPipeline.hide();
 }
 
+// ── Estimado de tiempo de evaluación DeepEval
+function _showEvalTimeHint(elapsedSecs, tcCount) {
+  const hint = document.getElementById('eval-time-hint');
+  if (!hint) return;
+  // Cada métrica GEval procesa el JSON completo (similar carga al LLM que generó)
+  // Estimación: 0.8× el tiempo de generación por métrica × 5 métricas
+  const secsPerMetric = Math.max(12, Math.round(elapsedSecs * 0.8));
+  const low  = Math.max(1, Math.floor((secsPerMetric * 5) / 60));
+  const high = Math.ceil((secsPerMetric * 5 * 1.5) / 60);
+  const range = low === high ? `~${low} min` : `~${low}–${high} min`;
+  hint.textContent = `⏱ Evaluación estimada: ${range} (5 métricas, ${tcCount} casos)`;
+  hint.style.display = 'block';
+}
+
+function _hideEvalTimeHint() {
+  const hint = document.getElementById('eval-time-hint');
+  if (hint) hint.style.display = 'none';
+}
+
 // ── RAG status
 async function checkRagStatus() {
   try {
@@ -417,8 +437,10 @@ async function generate() {
         renderResult(data, tcStreamed);
         setWorkflowStep('evaluate');
         const elapsed = Math.round((Date.now() - _t0) / 1000);
+        const tcCount = (data.test_cases || []).length;
         const ragTag  = useRag ? ' · RAG' : '';
-        showToast(`${(data.test_cases || []).length} casos generados en ${elapsed}s${ragTag}`);
+        showToast(`${tcCount} casos generados en ${elapsed}s${ragTag}`);
+        _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
       } else if (msg.error) {
         throw new Error(msg.error);
@@ -559,8 +581,10 @@ async function generateAgents() {
         }
 
         const elapsed     = Math.round((Date.now() - _t0) / 1000);
+        const tcCount     = (data.test_cases || []).length;
         const fallbackTag = data.used_fallback ? ' (fallback)' : '';
-        showToast(`${(data.test_cases || []).length} casos · ${elapsed}s${fallbackTag}`);
+        showToast(`${tcCount} casos · ${elapsed}s${fallbackTag}`);
+        _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
 
       } else if (msg.event === 'error') {
@@ -632,6 +656,7 @@ async function evaluate() {
   const btn = document.getElementById('evaluateBtn');
   btn.disabled = true;
   btn.querySelector('span').textContent = '⟳';
+  _hideEvalTimeHint();
 
   // Resetear métricas
   ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => setMetric(k, 0));
