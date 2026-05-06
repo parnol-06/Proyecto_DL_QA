@@ -48,39 +48,39 @@ Historia de usuario (UI / API)
 
 ---
 
-## Inicio rapido
+## Inicio rápido
 
-**Unico comando que necesitas:**
+**Único comando que necesitas:**
 ```bash
 docker compose up --build
 ```
 
-Esto se encarga automaticamente de todo:
+Esto se encarga automáticamente de todo:
 - Construye la imagen correctamente
-- Espera que Ollama este disponible
+- Espera que Ollama esté disponible
 - Descarga los modelos necesarios
-- Construye el indice RAG desde el corpus
+- Construye el índice RAG desde el corpus
 - Inicia el servidor FastAPI
 
 Abre en el navegador: **http://localhost:8000**
 
-> La primera ejecucion tarda mientras descarga los modelos. Las siguientes arrancan en segundos.
+> La primera ejecución tarda mientras descarga los modelos. Las siguientes arrancan en segundos.
 
 ---
 
-## Comandos utiles
+## Comandos útiles
 
 ```bash
 # Ver logs en tiempo real
 docker compose logs -f app
 
-# Reconstruir indice RAG manualmente
+# Reconstruir índice RAG manualmente
 docker compose exec app python scripts/build_index.py
 
 # Apagar (conserva datos y modelos)
 docker compose down
 
-# Reset completo (borra volumenes)
+# Reset completo (borra volúmenes)
 docker compose down -v
 ```
 
@@ -88,14 +88,14 @@ docker compose down -v
 
 ## Funcionalidades
 
-- Generacion de casos de prueba con streaming en tiempo real
-- Pipeline de 3 agentes especializados (Generador -> Revisor -> Optimizador)
-- RAG con corpus de buenas practicas QA, OWASP, IEEE 829
-- Evaluacion automatica con 5 metricas personalizadas DeepEval
-- Exportacion a JSON, CSV, Markdown y Excel
-- Modo batch para multiples historias de usuario
-- Filtrado por categoria y prioridad
-- Regeneracion individual de casos de prueba
+✅ Generación de casos de prueba con streaming en tiempo real
+✅ Pipeline de 3 agentes especializados (Generador → Revisor → Optimizador)
+✅ RAG con corpus de buenas prácticas QA, OWASP, IEEE 829
+✅ Evaluación automática con 5 métricas personalizadas DeepEval
+✅ Exportación a JSON, CSV, Markdown y Excel
+✅ Modo batch para múltiples historias de usuario
+✅ Filtrado por categoría y prioridad
+✅ Regeneración individual de casos de prueba
 
 ---
 
@@ -156,21 +156,21 @@ Proyecto_DL_QA/
 Copia `.env.example` a `.env` si necesitas configurar:
 - `OPIK_API_KEY` para trazabilidad de ejecuciones (opcional)
 - Modelo LLM por defecto
-- Temperatura de generacion
-- Origenes CORS permitidos
+- Temperatura de generación
+- Orígenes CORS permitidos
 
 ---
 
 ## Endpoints API
 
-Documentacion interactiva Swagger: **http://localhost:8000/docs**
+Documentación interactiva Swagger: **http://localhost:8000/docs**
 
-| Metodo | Ruta | Descripcion |
+| Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/generate/stream` | Generacion con streaming SSE |
+| POST | `/generate/stream` | Generación con streaming SSE |
 | POST | `/generate/agents` | Pipeline completo de 3 agentes |
-| POST | `/evaluate` | Evaluacion DeepEval |
-| GET  | `/rag/status` | Estado del indice RAG |
+| POST | `/evaluate` | Evaluación DeepEval |
+| GET  | `/rag/status` | Estado del índice RAG |
 | GET  | `/health` | Health check |
 
 ---
@@ -221,6 +221,7 @@ Cada ejecucion del pipeline queda registrada en Opik con trazas individuales por
 
 ---
 
+
+
 © 2026 Arnol Ferney Perez & Jesus Andres Cabezas. Todos los derechos reservados.  
 Proyecto desarrollado con fines academicos en el marco de la materia Deep Learning.
-

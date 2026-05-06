@@ -184,16 +184,35 @@ def _parse_llm_output(content: str) -> dict:
 
 
 def _build_response(data: dict, raw_story: str) -> GenerateResponse:
+    test_cases = data.get("test_cases", [])
+    
+    # Calcular automaticamente cobertura y categorias cubiertas
+    covered_cats = list({tc.get("category") for tc in test_cases if tc.get("category")})
+    all_expected_cats = {"happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"}
+    coverage_pct = round((len(covered_cats) / len(all_expected_cats)) * 100, 2) if len(all_expected_cats) > 0 else 0
+    missing_cats = list(all_expected_cats - set(covered_cats))
+    
+    default_coverage = {
+        "total_test_cases": len(test_cases),
+        "categories_covered": covered_cats,
+        "estimated_coverage_percent": coverage_pct,
+        "missing_areas": missing_cats,
+    }
+    
+    # Usar coverage del LLM si existe, sino usar el calculado automaticamente
+    coverage = data.get("coverage_summary") or default_coverage
+    
+    # Sobreescribir siempre valores reales calculados
+    coverage["total_test_cases"] = len(test_cases)
+    coverage["categories_covered"] = covered_cats
+    coverage["estimated_coverage_percent"] = coverage_pct
+    coverage["missing_areas"] = missing_cats
+    
     return GenerateResponse(
-        test_cases=data.get("test_cases", []),
+        test_cases=test_cases,
         edge_scenarios=data.get("edge_scenarios", []),
         potential_bugs=data.get("potential_bugs", []),
-        coverage_summary=data.get("coverage_summary", {
-            "total_test_cases": len(data.get("test_cases", [])),
-            "categories_covered": [],
-            "estimated_coverage_percent": 75,
-            "missing_areas": [],
-        }),
+        coverage_summary=coverage,
         raw_story=raw_story,
     )
 

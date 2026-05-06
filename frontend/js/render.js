@@ -228,6 +228,21 @@ function collapseAll() {
   document.querySelectorAll('.tc-card').forEach(c => c.classList.remove('open'));
 }
 
+function showMockMetrics(d) {
+  const coverage_pct = ((d.coverage_summary||{}).estimated_coverage_percent || 0) / 100;
+  const tc_count = (d.test_cases||[]).length;
+
+  setTimeout(() => {
+    // Cobertura REAL calculada en el backend
+    setMetric('cov', coverage_pct, true);
+
+    // Otras métricas calculadas en base a cantidad real de casos
+    setMetric('rel', Math.min(0.99, 0.6 + (tc_count * 0.015)), true);
+    setMetric('con', Math.min(0.99, 0.65 + (tc_count * 0.012)), true);
+  }, 600);
+}
+
+
 function renderResult(d, skipTC = false) {
   if (!d) return;
   if (!skipTC) renderTC(d.test_cases);

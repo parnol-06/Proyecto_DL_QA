@@ -245,6 +245,8 @@ function showStreamPreview() {
 function hideStreamPreview() {
   document.getElementById('streamPreview').classList.remove('visible');
   document.getElementById('streamText').textContent = '';
+  // Fix: Show test cases list that was hidden during stream
+  document.getElementById('tc-list').style.display = '';
 }
 
 function appendStreamToken(token) {
