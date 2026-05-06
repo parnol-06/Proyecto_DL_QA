@@ -223,3 +223,4 @@ Cada ejecucion del pipeline queda registrada en Opik con trazas individuales por
 
 © 2026 Arnol Ferney Perez & Jesus Andres Cabezas. Todos los derechos reservados.  
 Proyecto desarrollado con fines academicos en el marco de la materia Deep Learning.
+
