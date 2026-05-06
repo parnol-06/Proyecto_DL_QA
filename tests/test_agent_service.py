@@ -3,7 +3,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from backend.schemas.models import AgentGenerateRequest
+from backend.schemas.models import AgentGenerateRequest, AgentTrace
 
 VALID_STORY = "Como usuario quiero iniciar sesión con email y contraseña para acceder a mi cuenta personal."
 
@@ -73,7 +73,7 @@ async def test_run_agent_pipeline_uses_fallback_when_crewai_fails():
     req = AgentGenerateRequest(user_story=VALID_STORY)
 
     with patch("backend.services.agent_service._run_crew", side_effect=Exception("CrewAI no disponible")), \
-         patch("backend.services.agent_service.asyncio.get_event_loop") as mock_loop:
+         patch("backend.services.agent_service.asyncio.get_running_loop") as mock_loop:
         # Simular que run_in_executor lanza la excepción del _run_crew
         mock_loop.return_value.run_in_executor = AsyncMock(side_effect=Exception("CrewAI no disponible"))
         with patch("backend.services.llm_service.generate_test_cases", return_value=mock_fallback_resp):
@@ -96,9 +96,9 @@ async def test_run_agent_pipeline_returns_3_traces_on_success():
             "coverage_summary": {"total_test_cases": 1, "categories_covered": [], "estimated_coverage_percent": 75, "missing_areas": []}
         },
         "agent_trace": [
-            MagicMock(agent="Generador", elapsed_s=10.0, summary="1 casos generados"),
-            MagicMock(agent="Revisor", elapsed_s=5.0, summary="Veredicto: APROBADO | Score: 0.85"),
-            MagicMock(agent="Optimizador", elapsed_s=4.0, summary="2 casos optimizados"),
+            AgentTrace(agent="Generador",   elapsed_s=10.0, summary="1 casos generados"),
+            AgentTrace(agent="Revisor",     elapsed_s=5.0,  summary="Veredicto: APROBADO | Score: 0.85"),
+            AgentTrace(agent="Optimizador", elapsed_s=4.0,  summary="2 casos optimizados"),
         ],
         "review": {"verdict": "APROBADO", "score": 0.85, "gaps": [], "strengths": [], "recommendation": "OK"},
         "optimizer_result": {"priority_gaps": [], "added_cases": [], "optimization_summary": "OK"},
@@ -107,7 +107,7 @@ async def test_run_agent_pipeline_returns_3_traces_on_success():
 
     req = AgentGenerateRequest(user_story=VALID_STORY)
 
-    with patch("backend.services.agent_service.asyncio.get_event_loop") as mock_loop:
+    with patch("backend.services.agent_service.asyncio.get_running_loop") as mock_loop:
         mock_loop.return_value.run_in_executor = AsyncMock(return_value=mock_crew_result)
         result = await run_agent_pipeline(req)
 

@@ -11,10 +11,12 @@ services:
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - OLLAMA_EVAL_MODEL=${OLLAMA_EVAL_MODEL:-llama3.2}
       - OPIK_API_KEY=${OPIK_API_KEY}
       - OPIK_WORKSPACE=${OPIK_WORKSPACE}
       - OPIK_PROJECT_NAME=${OPIK_PROJECT_NAME}
     volumes:
+      - ./frontend:/app/frontend:ro
       - chroma_data:/app/chroma_db
     restart: unless-stopped
     healthcheck:
@@ -26,3 +28,5 @@ services:
 
 volumes:
   chroma_data:
+    labels:
+      com.project.warning: "ADVERTENCIA: 'docker compose down -v' destruye el indice RAG. Usar 'docker compose down' sin -v para conservarlo."

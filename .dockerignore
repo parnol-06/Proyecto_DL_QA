@@ -31,8 +31,7 @@ docs/
 chroma_db/
 experiments/
 
-# ── Dependencias opcionales (no se instalan en la imagen) ────────────────────
-requirements-eval.txt
+# ── Dependencias de desarrollo (no se instalan en la imagen) ─────────────────
 requirements-dev.txt
 
 # ── Docs del proyecto (no necesarios en runtime) ─────────────────────────────

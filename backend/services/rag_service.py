@@ -3,19 +3,24 @@ RAG Service — Recuperación de contexto desde corpus de buenas prácticas QA.
 Usa ChromaDB como vector store y nomic-embed-text (Ollama) para embeddings.
 """
 
+import asyncio
 import logging
 import os
 
 import chromadb
 import ollama
 
+from backend.config import OLLAMA_HOST
+
 logger = logging.getLogger(__name__)
+
+_ollama = ollama.Client(host=OLLAMA_HOST)
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────
 _BASE_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 CHROMA_PATH  = os.path.join(_BASE_DIR, "chroma_db")
 CORPUS_DIR   = os.path.join(_BASE_DIR, "corpus")
-EMBED_MODEL  = "nomic-embed-text"
+EMBED_MODEL  = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 COLLECTION   = "qa_knowledge"
 CHUNK_SIZE   = 500
 CHUNK_OVERLAP = 50
@@ -24,7 +29,7 @@ CHUNK_OVERLAP = 50
 
 def _embed(text: str) -> list[float]:
     """Genera embedding con nomic-embed-text via Ollama."""
-    response = ollama.embed(model=EMBED_MODEL, input=text)
+    response = _ollama.embed(model=EMBED_MODEL, input=text)
     return response["embeddings"][0]
 
 
@@ -126,3 +131,9 @@ def is_index_built() -> bool:
         return _get_collection().count() > 0
     except Exception:
         return False
+
+
+async def async_semantic_search(query: str, k: int = 3) -> str:
+    """Versión async-safe de semantic_search: ejecuta en thread executor para no bloquear el event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, semantic_search, query, k)

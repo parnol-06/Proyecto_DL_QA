@@ -29,8 +29,7 @@ Historia de usuario (UI / API)
 +-----------+    +----------------+
 | LLM Svc   |    | Agent Service  |
 | Ollama    |    | CrewAI         |
-| llama3.2  |    | 3 agentes      |
-| mistral   |    | + Opik traces  |
+|           |    | 3 agentes      |
 +-----------+    +----------------+
          |
          v
