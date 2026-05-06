@@ -165,7 +165,12 @@ class OllamaEvalModel(DeepEvalBaseLLM):
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.0},
         )
-        return _clean_json_output(response["message"]["content"])
+        raw = response["message"]["content"]
+        logger.debug(
+            "ollama raw response",
+            extra={"model": self.model_name, "raw_length": len(raw), "raw_preview": raw[:300]},
+        )
+        return _clean_json_output(raw)
 
     # ── Old DeepEval interface (still called by some metric internals) ──
     def generate(self, prompt: str, **kwargs) -> str:
@@ -191,21 +196,28 @@ class OllamaEvalModel(DeepEvalBaseLLM):
 
 # ─────────────────────────────────────────────
 # 2. Custom G-Eval Metrics
+#
+# Design rules for local models (llama3.2:8b / mistral):
+#  - Use evaluation_steps (not criteria) so GEval skips its steps-generation
+#    LLM call and goes straight to scoring — one call instead of two.
+#  - Never mention a scoring scale in steps; GEval's template already asks
+#    for a float in [0, 1]. Mixing scales produces ~0.2 scores.
+#  - Keep each step short and binary so small models can follow it.
 # ─────────────────────────────────────────────
 def make_coverage_metric(model: DeepEvalBaseLLM) -> GEval:
     """Does the output cover the key scenarios from the requirement?"""
     return GEval(
         name="Test Coverage",
-        criteria="""Evaluate if the generated test cases provide comprehensive coverage of the user story.
-        Consider:
-        - Happy path scenarios are included
-        - Negative/error scenarios are covered  
-        - Edge cases relevant to the requirement are identified
-        - Security and performance considerations are mentioned if applicable
-        Score 1-10, where 10 means excellent coverage of all scenarios.""",
+        evaluation_steps=[
+            "Check whether the test suite includes at least one happy-path scenario that validates the core feature described in the input.",
+            "Check whether at least one negative or error scenario is present (e.g., invalid input, authentication failure, missing data).",
+            "Check whether edge cases relevant to the specific requirement are addressed (boundary values, empty states, concurrent access, etc.).",
+            "Check whether non-functional concerns (performance, security, accessibility) are mentioned when the requirement implies them.",
+            "Assign a higher score when more of these areas are covered, and a lower score when key scenarios are missing.",
+        ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
         model=model,
-        threshold=0.6,
+        threshold=0.5,
     )
 
 
@@ -213,16 +225,16 @@ def make_relevancy_metric(model: DeepEvalBaseLLM) -> GEval:
     """Are the test cases relevant to the actual requirement?"""
     return GEval(
         name="Test Relevancy",
-        criteria="""Evaluate if ALL generated test cases, edge scenarios, and bug reports are 
-        directly relevant to the input user story.
-        Penalize if:
-        - Test cases describe unrelated functionality
-        - Edge scenarios are generic and not specific to the requirement
-        - Potential bugs have no connection to the described feature
-        Score 1-10, where 10 means every item is highly relevant.""",
+        evaluation_steps=[
+            "Read the input (user story) and identify the core feature being described.",
+            "For each test case, edge scenario, and potential bug in the output, decide whether it directly tests behavior described in the input.",
+            "Lower the score if test cases describe functionality that is not mentioned in the input.",
+            "Lower the score if edge scenarios are generic and could apply to any feature rather than this specific one.",
+            "Assign a high score when every item in the output is clearly traceable to the input requirement.",
+        ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
         model=model,
-        threshold=0.7,
+        threshold=0.5,
     )
 
 
@@ -230,48 +242,50 @@ def make_consistency_metric(model: DeepEvalBaseLLM) -> GEval:
     """Are the test cases internally consistent and well-structured?"""
     return GEval(
         name="Test Consistency",
-        criteria="""Evaluate the internal consistency and quality of the generated test cases.
-        Check:
-        - Steps logically lead to the expected result
-        - Preconditions are appropriate for each test case
-        - Priority levels are correctly assigned (critical flows = high priority)
-        - Test IDs follow a consistent format
-        - No contradictions between test cases
-        Score 1-10, where 10 means fully consistent and professionally structured.""",
+        evaluation_steps=[
+            "For each test case, verify that the steps logically lead to the stated expected result.",
+            "Check that preconditions listed for each test case are appropriate and sufficient.",
+            "Check that priority levels make sense: critical user flows should have high priority.",
+            "Check that test IDs or titles follow a consistent naming pattern across the suite.",
+            "Lower the score if any test case contradicts another, or if steps and expected results are misaligned.",
+        ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
         model=model,
-        threshold=0.65,
+        threshold=0.5,
     )
 
 
 def make_specificity_metric(model: DeepEvalBaseLLM) -> GEval:
-    """¿Los pasos de los test cases son específicos o genéricos?"""
+    """Are the test steps specific and actionable, or vague and generic?"""
     return GEval(
         name="Step Specificity",
-        criteria="""Evalúa si los pasos de cada caso de prueba son específicos y accionables.
-        Penaliza pasos genéricos como 'Ir a la página', 'Hacer clic en el botón', 'Verificar el resultado'.
-        Premia pasos que incluyen: datos concretos (valores, URLs, credenciales de prueba),
-        acciones precisas (campo exacto, botón nombrado), y condiciones medibles en el resultado esperado.
-        Puntúa 1-10, donde 10 es completamente específico y libre de pasos genéricos.""",
+        evaluation_steps=[
+            "Read each step in every test case.",
+            "Flag steps that are vague: 'Go to the page', 'Click the button', 'Verify the result' without naming the specific page, button, or result.",
+            "Give credit for steps that include concrete data values, exact field names, specific URLs, or measurable acceptance criteria.",
+            "Give credit for expected results that state a specific, observable outcome rather than a generic success message.",
+            "Assign a high score when most steps are concrete and actionable, a low score when steps are mostly generic.",
+        ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
         model=model,
-        threshold=0.6,
+        threshold=0.45,
     )
 
 
 def make_nonfunctional_balance_metric(model: DeepEvalBaseLLM) -> GEval:
-    """¿Hay un balance adecuado entre casos funcionales y no funcionales?"""
+    """Is there an adequate balance between functional and non-functional test cases?"""
     return GEval(
         name="Non-Functional Balance",
-        criteria="""Evalúa si la suite de casos de prueba incluye un balance adecuado entre:
-        - Pruebas funcionales (happy_path, negativo, caso_limite)
-        - Pruebas no funcionales (rendimiento con métricas numéricas, seguridad con vector de ataque,
-          usabilidad con criterios de UX, compatibilidad con dispositivos/browsers)
-        Penaliza si los casos no funcionales tienen criterios vagos sin valores cuantitativos.
-        Puntúa 1-10, donde 10 significa ≥30% no funcionales con criterios medibles.""",
+        evaluation_steps=[
+            "Count the functional test cases (happy path, negative, edge cases) and the non-functional ones (performance, security, usability, compatibility).",
+            "Check whether non-functional test cases include measurable criteria — e.g., response time in milliseconds, specific attack vectors, or named browsers/devices.",
+            "Lower the score if non-functional test cases exist but have vague criteria like 'the system should be fast' without a numeric threshold.",
+            "Assign a high score if at least 25-30% of the suite covers non-functional concerns with concrete, measurable acceptance criteria.",
+            "Assign a low score if all test cases are functional with no non-functional coverage at all.",
+        ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
         model=model,
-        threshold=0.55,
+        threshold=0.4,
     )
 
 
@@ -303,7 +317,78 @@ def _validate_generated_output(output: dict) -> dict:
 
 
 # ─────────────────────────────────────────────
-# 4. Main evaluation runner
+# 4. Evaluation input normalizer
+# ─────────────────────────────────────────────
+def _normalize_for_eval(output: dict) -> str:
+    """
+    Convert the generated JSON blob into a concise plain-text summary.
+    Small local eval models (llama3.2:8b) produce much better scores when
+    given structured prose instead of raw nested JSON.
+    """
+    lines = []
+    test_cases = output.get("test_cases", [])
+    lines.append(f"TEST SUITE — {len(test_cases)} test case(s)\n")
+
+    for tc in test_cases:
+        tc_id    = tc.get("id", "?")
+        title    = tc.get("title", "Untitled")
+        category = tc.get("category", "unknown").upper()
+        priority = tc.get("priority", "")
+        steps    = tc.get("steps", [])
+        expected = tc.get("expected_result", "")
+        test_type = tc.get("test_type", "")
+
+        header = f"[{category}] {tc_id}: {title}"
+        if priority:
+            header += f"  (priority: {priority})"
+        if test_type:
+            header += f"  (type: {test_type})"
+        lines.append(header)
+
+        if steps:
+            # Cap at 8 steps to avoid overwhelming the model
+            step_str = " → ".join(str(s) for s in steps[:8])
+            lines.append(f"  Steps: {step_str}")
+
+        if expected:
+            lines.append(f"  Expected: {expected}")
+
+        preconditions = tc.get("preconditions", [])
+        if preconditions:
+            lines.append(f"  Preconditions: {'; '.join(str(p) for p in preconditions[:3])}")
+
+        lines.append("")
+
+    edge = output.get("edge_scenarios", [])
+    if edge:
+        lines.append(f"EDGE SCENARIOS ({len(edge)}):")
+        for e in edge[:5]:
+            label = e.get("scenario", e.get("title", str(e))) if isinstance(e, dict) else str(e)
+            lines.append(f"  - {str(label)[:120]}")
+        lines.append("")
+
+    bugs = output.get("potential_bugs", [])
+    if bugs:
+        lines.append(f"POTENTIAL BUGS ({len(bugs)}):")
+        for b in bugs[:5]:
+            label = b.get("description", b.get("bug", str(b))) if isinstance(b, dict) else str(b)
+            lines.append(f"  - {str(label)[:120]}")
+        lines.append("")
+
+    summary = output.get("coverage_summary", {})
+    if summary:
+        pct      = summary.get("estimated_coverage_percent", "?")
+        cats     = summary.get("categories_covered", [])
+        missing  = summary.get("missing_areas", [])
+        lines.append(f"COVERAGE: {pct}% | Categories covered: {', '.join(cats)}")
+        if missing:
+            lines.append(f"  Missing areas: {', '.join(missing)}")
+
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────
+# 5. Main evaluation runner
 # ─────────────────────────────────────────────
 def evaluate_test_cases(
     user_story: str,
@@ -320,12 +405,16 @@ def evaluate_test_cases(
     effective_eval = eval_model_name or _EVAL_MODEL
     if effective_eval == model_name:
         logger.warning(
-            "El modelo de evaluación (%s) coincide con el de generación — posible sesgo de auto-evaluación",
+            "eval model (%s) matches generation model — possible self-evaluation bias",
             model_name,
         )
     eval_model = OllamaEvalModel(effective_eval)
 
-    actual_output = json.dumps(validated, indent=2)
+    actual_output = _normalize_for_eval(validated)
+    logger.debug(
+        "normalized eval input",
+        extra={"event": "eval_input_normalized", "length": len(actual_output), "preview": actual_output[:300]},
+    )
 
     test_case = LLMTestCase(
         input=user_story,
@@ -412,7 +501,7 @@ def stream_evaluate_test_cases(
     validated = _validate_generated_output(generated_output)
     effective_eval = eval_model_name or _EVAL_MODEL
     eval_model = OllamaEvalModel(effective_eval)
-    actual_output = json.dumps(validated, indent=2)
+    actual_output = _normalize_for_eval(validated)
     test_case = LLMTestCase(input=user_story, actual_output=actual_output)
 
     factories = [
