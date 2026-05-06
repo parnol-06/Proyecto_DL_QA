@@ -33,11 +33,13 @@ function appendTC(tc) {
   const list = document.getElementById('tc-list');
   if (!list) return;
 
+  // Always make the list visible — showStreamPreview() hides it without clearing children,
+  // so the old children.length > 0 guard would leave it hidden on 2nd+ generations.
+  list.style.display = 'flex';
+
   if (!list.children.length) {
     const empty = document.getElementById('empty-tc');
     if (empty) empty.style.display = 'none';
-    list.style.display = 'flex';
-
     const ctrl = document.getElementById('tc-controls');
     if (ctrl) ctrl.style.display = 'flex';
     const sw = document.getElementById('tcSearchWrap');
@@ -211,6 +213,11 @@ function setMetric(key, val) {
     scoreEl.style.color = val >= 0.70 ? 'var(--green)'
                         : val >= 0.50 ? 'var(--amber)' : 'var(--red)';
   }
+}
+
+function setMetricState(key, state) {
+  const dot = document.getElementById('rpdot-' + key);
+  if (dot) dot.dataset.state = state;
 }
 
 function expandAll() {

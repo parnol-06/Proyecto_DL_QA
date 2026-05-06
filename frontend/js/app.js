@@ -85,13 +85,16 @@ function clearAll() {
   document.getElementById('evaluateBtn').innerHTML = '<span>◈</span> Evaluar con DeepEval';
   _hideEvalTimeHint();
   _hideEvalTimerBar();
+  const epEl = document.getElementById('eval-pipeline');
+  if (epEl) epEl.style.display = 'none';
 
-  // Métricas mini bars (right panel)
+  // Métricas mini bars + dots (right panel)
   ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => {
     const bar     = document.getElementById('bar-' + k);
     const scoreEl = document.getElementById('score-' + k);
     if (bar)     bar.style.width    = '0%';
     if (scoreEl) { scoreEl.textContent = '—'; scoreEl.style.color = 'var(--muted)'; }
+    setMetricState(k, 'idle');
   });
   const miniEmpty   = document.getElementById('metrics-mini-empty');
   const miniContent = document.getElementById('metrics-mini-content');
@@ -429,6 +432,13 @@ async function generate() {
 
   const _t0 = Date.now();
   let _timerInterval;
+
+  // Wipe stale cards so appendTC always starts with an empty list
+  const _prevTcList = document.getElementById('tc-list');
+  if (_prevTcList) _prevTcList.innerHTML = '';
+  const _prevCntTC = document.getElementById('cnt-tc');
+  if (_prevCntTC) _prevCntTC.textContent = '0';
+
   switchTab('tc');
   showStreamPreview();
   setWorkflowStep('generate');
@@ -481,6 +491,7 @@ async function generate() {
         showToast(`${tcCount} casos generados en ${elapsed}s${ragTag}`);
         _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
+        EvalPipeline.setIdle();
       } else if (msg.error) {
         throw new Error(msg.error);
       }
@@ -518,6 +529,12 @@ async function generateAgents() {
 
   setWorkflowStep('generate');
   switchTab('tc');
+
+  // Wipe stale cards (same fix as standard generate)
+  const _prevTcListA = document.getElementById('tc-list');
+  if (_prevTcListA) _prevTcListA.innerHTML = '';
+  const _prevCntTCA = document.getElementById('cnt-tc');
+  if (_prevCntTCA) _prevCntTCA.textContent = '0';
 
   // StreamMonitor toma el control del panel-tc
   StreamMonitor.show();
@@ -627,6 +644,7 @@ async function generateAgents() {
         showToast(`${tcCount} casos · ${elapsed}s${fallbackTag}`);
         _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
+        EvalPipeline.setIdle();
 
       } else if (msg.event === 'error') {
         throw new Error(msg.message || 'Error en pipeline de agentes');
@@ -689,7 +707,7 @@ function renderAgentTrace(traces, usedFallback, optimizerOutput = null) {
 }
 
 // ── Evaluate (DeepEval streaming — usa readSSE)
-async function evaluate() {
+async function runEvaluation() {
   if (!data) { showToast('Genera casos de prueba primero', 'var(--amber)'); return; }
   const story = document.getElementById('userStory').value.trim();
   if (!story) { showToast('Necesitas una historia de usuario para evaluar', 'var(--amber)'); return; }
@@ -699,13 +717,17 @@ async function evaluate() {
   btn.querySelector('span').textContent = '⟳';
   _hideEvalTimeHint();
 
-  // Resetear métricas — mostrar las 5 en estado pendiente mientras evalúa
-  ['cov', 'rel', 'con', 'spe', 'nfb'].forEach(k => setMetric(k, 0));
-  renderMetricsDashboard({});
+  // Ordered short-keys matching backend metric sequence
+  const _RP_KEYS = ['cov', 'rel', 'con', 'spe', 'nfb'];
+
+  // Reset bars + dots, show sidebar pipeline immediately (don't wait for first metric)
+  _RP_KEYS.forEach(k => { setMetric(k, 0); setMetricState(k, 'idle'); });
+  setMetricState('cov', 'running');   // Coverage is always step 1
+  EvalPipeline.setRunning();
   const miniContent = document.getElementById('metrics-mini-content');
   const miniEmpty   = document.getElementById('metrics-mini-empty');
-  if (miniContent) miniContent.style.display = 'none';
-  if (miniEmpty)   miniEmpty.style.display   = 'flex';
+  if (miniContent) miniContent.style.display = 'block';
+  if (miniEmpty)   miniEmpty.style.display   = 'none';
 
   // ── Temporizador en vivo ────────────────────────────────────────────────
   const _t0 = Date.now();
@@ -731,7 +753,6 @@ async function evaluate() {
 
   const _metricsCollected = {};
   const _reasonsCollected = {};
-  let   _firstMetric      = true;
 
   const evalModelEl = document.getElementById('evalModelSelect');
   const evalModel   = evalModelEl?.value || document.getElementById('modelSelect').value;
@@ -754,19 +775,19 @@ async function evaluate() {
       if (msg.error) throw new Error(msg.error);
 
       if (msg.metric) {
-        const elapsed = Math.round((Date.now() - _t0) / 1000);
+        const elapsed  = Math.round((Date.now() - _t0) / 1000);
         const shortKey = KEY_MAP[msg.metric];
-        if (shortKey) setMetric(shortKey, msg.score);
+        if (shortKey) {
+          setMetric(shortKey, msg.score);
+          // Mark completed metric as pass/warn and advance running dot to next
+          setMetricState(shortKey, msg.passed ? 'pass' : 'warn');
+          const nextKey = _RP_KEYS[msg.step]; // step is 1-indexed → [step] is the next 0-indexed entry
+          if (nextKey) setMetricState(nextKey, 'running');
+        }
         _metricsCollected[msg.metric] = msg.score;
         if (msg.reason) _reasonsCollected[msg.metric] = msg.reason;
-        renderMetricsDashboard(_metricsCollected, _reasonsCollected);
+        EvalPipeline.updateMetric(msg.metric, msg.score, msg.passed, msg.elapsed_ms || 0, msg.reason || '');
         _updateEvalTimerBar(elapsed, msg.step, msg.total, msg.name);
-
-        if (_firstMetric) {
-          _firstMetric = false;
-          if (miniEmpty)   miniEmpty.style.display   = 'none';
-          if (miniContent) miniContent.style.display = 'block';
-        }
 
         const icon  = msg.passed ? '✓' : '✗';
         const color = msg.passed ? 'var(--green)' : 'var(--amber)';
@@ -777,6 +798,7 @@ async function evaluate() {
         const totalElapsed = Math.round((Date.now() - _t0) / 1000);
         clearInterval(_timerInterval);
         _hideEvalTimerBar();
+        EvalPipeline.setDone();
         WorkflowBar.timer('evaluate', _fmtTime(totalElapsed));
         Store.set('metrics', { ..._metricsCollected });
         renderMetricsDashboard(_metricsCollected, _reasonsCollected);
@@ -897,6 +919,7 @@ async function generateBatch() {
   renderResult(data);
   setWorkflowStep('evaluate');
   document.getElementById('evaluateBtn').disabled = false;
+  EvalPipeline.setIdle();
   btn.disabled = false;
   spinner.style.display = 'none';
   btnText.textContent = 'Generar casos de prueba';
@@ -917,6 +940,8 @@ function mergeOptimizerCases(addedCases) {
 }
 
 // ── Init
+document.getElementById('evaluateBtn')?.addEventListener('click', runEvaluation);
+
 loadModels();
 checkRagStatus();
 setWorkflowStep('input');
@@ -935,5 +960,6 @@ if (saved) {
     renderResult(data);
     setWorkflowStep('evaluate');
     document.getElementById('evaluateBtn').disabled = false;
+    EvalPipeline.setIdle();
   } catch { localStorage.removeItem('lastResult'); }
 }

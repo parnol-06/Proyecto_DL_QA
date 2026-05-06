@@ -150,8 +150,11 @@ async def rag_status():
         return {"built": False, "chunk_count": 0, "error": str(exc)}
 
 
+_EMBED_KEYWORDS = ("embed", "nomic", "bge", "e5-", "minilm")
+
 def _extract_model_names(resp) -> list[str]:
-    """Compatible con ollama SDK antiguo (dict) y nuevo (objetos Pydantic)."""
+    """Compatible con ollama SDK antiguo (dict) y nuevo (objetos Pydantic).
+    Filtra modelos de embeddings — no soportan chat y no deben aparecer en el selector."""
     raw = resp.get("models", []) if isinstance(resp, dict) else getattr(resp, "models", [])
     names = []
     for m in raw:
@@ -159,7 +162,10 @@ def _extract_model_names(resp) -> list[str]:
             names.append(m.get("name") or m.get("model", ""))
         else:
             names.append(getattr(m, "name", None) or getattr(m, "model", ""))
-    return [n for n in names if n]
+    return [
+        n for n in names
+        if n and not any(kw in n.lower() for kw in _EMBED_KEYWORDS)
+    ]
 
 
 @router.get("/models")

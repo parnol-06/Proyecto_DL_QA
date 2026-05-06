@@ -16,6 +16,7 @@ services:
       - OPIK_WORKSPACE=${OPIK_WORKSPACE}
       - OPIK_PROJECT_NAME=${OPIK_PROJECT_NAME}
     volumes:
+      - ./frontend:/app/frontend:ro
       - chroma_data:/app/chroma_db
     restart: unless-stopped
     healthcheck:

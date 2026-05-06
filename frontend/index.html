@@ -288,6 +288,9 @@ El sistema debe:
   <!-- Panel: Métricas — DeepEval dashboard + Coverage summary -->
   <div class="panel" id="panel-metrics">
 
+    <!-- EvalPipeline — visible always (idle/running), hidden when dashboard shows -->
+    <div id="eval-pipeline" style="display:none"></div>
+
     <!-- Temporizador en vivo durante la evaluación DeepEval -->
     <div id="eval-timer-bar" style="display:none">
       <div class="eval-timer-header">
@@ -350,7 +353,7 @@ El sistema debe:
 
   <!-- Botón evaluar -->
   <div class="rp-section">
-    <button class="btn-evaluate" id="evaluateBtn" onclick="evaluate()" disabled>
+    <button class="btn-evaluate" id="evaluateBtn" disabled>
       <span>◈</span> Evaluar con DeepEval
     </button>
     <p id="eval-time-hint" style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;display:none"></p>
@@ -367,26 +370,31 @@ El sistema debe:
     </div>
     <div class="metrics-mini" id="metrics-mini-content" style="display:none">
       <div class="metric-row">
+        <span class="rp-dot" id="rpdot-cov" data-state="idle"></span>
         <span class="metric-name">Coverage</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-cov" style="background:var(--green)"></div></div>
         <span class="metric-score" id="score-cov" style="color:var(--muted)">—</span>
       </div>
       <div class="metric-row">
+        <span class="rp-dot" id="rpdot-rel" data-state="idle"></span>
         <span class="metric-name">Relevancy</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-rel" style="background:var(--cyan)"></div></div>
         <span class="metric-score" id="score-rel" style="color:var(--muted)">—</span>
       </div>
       <div class="metric-row">
+        <span class="rp-dot" id="rpdot-con" data-state="idle"></span>
         <span class="metric-name">Consistency</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-con" style="background:var(--accent2)"></div></div>
         <span class="metric-score" id="score-con" style="color:var(--muted)">—</span>
       </div>
       <div class="metric-row">
+        <span class="rp-dot" id="rpdot-spe" data-state="idle"></span>
         <span class="metric-name">Specificity</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-spe" style="background:var(--amber)"></div></div>
         <span class="metric-score" id="score-spe" style="color:var(--muted)">—</span>
       </div>
       <div class="metric-row">
+        <span class="rp-dot" id="rpdot-nfb" data-state="idle"></span>
         <span class="metric-name">NFR Balance</span>
         <div class="metric-bar-wrap"><div class="metric-bar" id="bar-nfb" style="background:#e879a0"></div></div>
         <span class="metric-score" id="score-nfb" style="color:var(--muted)">—</span>
@@ -519,6 +527,7 @@ El sistema debe:
 <script src="/static/js/components/TCCard.js"></script>
 <script src="/static/js/components/AgentPipeline.js"></script>
 <script src="/static/js/components/MetricCard.js"></script>
+<script src="/static/js/components/EvalPipeline.js"></script>
 <script src="/static/js/render.js"></script>
 <script src="/static/js/api.js"></script>
 <script src="/static/js/app.js"></script>

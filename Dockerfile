@@ -9,10 +9,11 @@ RUN apt-get update \
 WORKDIR /app
 
 # Separar requirements para maximizar caché de capas
-COPY requirements.txt ./
+COPY requirements.txt requirements-eval.txt ./
 
 RUN pip install --no-cache-dir --prefix=/install \
-        -r requirements.txt
+        -r requirements.txt \
+        -r requirements-eval.txt
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
