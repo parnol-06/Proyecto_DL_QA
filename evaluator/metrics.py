@@ -20,7 +20,7 @@ import logging
 import math
 import re
 import time
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 
 import ollama
 
@@ -175,11 +175,15 @@ class OllamaEvalModel(DeepEvalBaseLLM):
         return self._raw_call(prompt)
 
     # ── New DeepEval interface (required by versions that call *_raw_response) ──
-    def generate_raw_response(self, prompt: str, **kwargs) -> str:
-        return self._raw_call(prompt)
+    def generate_raw_response(self, prompt: str, **kwargs) -> Tuple[str, float]:
+        text = self._raw_call(prompt)
+        logger.debug("generate_raw_response", extra={"length": len(text), "preview": text[:120]})
+        return text, 0.0
 
-    async def a_generate_raw_response(self, prompt: str, **kwargs) -> str:
-        return self._raw_call(prompt)
+    async def a_generate_raw_response(self, prompt: str, **kwargs) -> Tuple[str, float]:
+        text = self._raw_call(prompt)
+        logger.debug("a_generate_raw_response", extra={"length": len(text), "preview": text[:120]})
+        return text, 0.0
 
     def get_model_name(self) -> str:
         return f"ollama/{self.model_name}"
