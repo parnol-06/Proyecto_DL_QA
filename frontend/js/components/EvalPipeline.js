@@ -32,6 +32,7 @@ const EvalPipeline = (() => {
   }
 
   function _nodeHTML(step, idx) {
+    if (!step?.key) return '';          // guard against undefined step (should never happen)
     const result        = _results[step.key];
     const completedCount = Object.keys(_results).length;
     const isActive      = _state === 'running' && idx === completedCount;
@@ -42,16 +43,20 @@ const EvalPipeline = (() => {
 
     const dotInner = { idle: '', running: '·', pass: '✓', warn: '!' }[st];
 
+    // Compute score string before the object literal — JS evaluates ALL values
+    // eagerly regardless of which key is selected, so result.score would crash
+    // whenever result is undefined (idle / running states).
+    const _scoreStr = result?.score != null ? result.score.toFixed(2) : '—';
     const badge = {
       idle:    `<span class="ep-badge ep-b-idle">PENDIENTE</span>`,
       running: `<span class="ep-badge ep-b-running">EVALUANDO</span>`,
-      pass:    `<span class="ep-badge ep-b-pass">PASS · ${result.score.toFixed(2)}</span>`,
-      warn:    `<span class="ep-badge ep-b-warn">WARN · ${result.score.toFixed(2)}</span>`,
+      pass:    `<span class="ep-badge ep-b-pass">PASS · ${_scoreStr}</span>`,
+      warn:    `<span class="ep-badge ep-b-warn">WARN · ${_scoreStr}</span>`,
     }[st];
 
     const elapsed = result ? `<span class="ep-elapsed">${result.elapsed_ms}ms</span>` : '';
 
-    const pct    = result ? Math.round(result.score * 100) : 0;
+    const pct    = result?.score != null ? Math.round(result.score * 100) : 0;
     const thrPct = Math.round(step.threshold * 100);
 
     const hasReason = result?.reason && result.reason !== 'N/A' && !result.reason.startsWith('Error:');
