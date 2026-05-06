@@ -15,12 +15,14 @@ from deepeval.metrics import (
 )
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from deepeval.models.base_model import DeepEvalBaseLLM
+import json
 import logging
 import math
+import re
 import time
-import ollama
-import json
 from typing import Generator, Optional
+
+import ollama
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,65 @@ _EVAL_MODEL    = os.getenv("OLLAMA_EVAL_MODEL", "llama3.2")
 
 
 # ─────────────────────────────────────────────
-# 1. Wrap Ollama as a DeepEval-compatible model
+# 1. JSON output cleaner
+# ─────────────────────────────────────────────
+def _clean_json_output(text: str) -> str:
+    """
+    Extract the first valid JSON object from noisy LLM output.
+    Handles: markdown code fences, leading/trailing prose, multiple blocks.
+    Called on every model response before DeepEval parses it.
+    """
+    if not text:
+        return text
+    text = text.strip()
+
+    # Fast path — already valid JSON
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+
+    # Strip ```json { ... } ``` or ``` { ... } ``` markdown fences
+    md = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', text)
+    if md:
+        candidate = md.group(1).strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    # Walk the string to extract the first balanced { } block
+    start = text.find('{')
+    if start != -1:
+        depth = 0
+        for i, ch in enumerate(text[start:], start):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except json.JSONDecodeError:
+                        try:
+                            from json_repair import repair_json
+                            repaired = repair_json(candidate)
+                            if isinstance(repaired, str) and repaired:
+                                json.loads(repaired)  # validate before returning
+                                return repaired
+                        except Exception:
+                            pass
+                    break  # first block tried — don't scan further
+
+    return text  # fallback: return as-is, let DeepEval surface the error
+
+
+# ─────────────────────────────────────────────
+# 2. Wrap Ollama as a DeepEval-compatible model
 # ─────────────────────────────────────────────
 class OllamaEvalModel(DeepEvalBaseLLM):
     def __init__(self, model_name: str = _DEFAULT_MODEL):
@@ -98,16 +158,28 @@ class OllamaEvalModel(DeepEvalBaseLLM):
     def load_model(self):
         return self.model_name
 
-    def generate(self, prompt: str) -> str:
+    def _raw_call(self, prompt: str) -> str:
+        """Single contact point with Ollama; always returns cleaned output."""
         response = ollama.chat(
             model=self.model_name,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.0},
         )
-        return response["message"]["content"]
+        return _clean_json_output(response["message"]["content"])
 
-    async def a_generate(self, prompt: str) -> str:
-        return self.generate(prompt)
+    # ── Old DeepEval interface (still called by some metric internals) ──
+    def generate(self, prompt: str, **kwargs) -> str:
+        return self._raw_call(prompt)
+
+    async def a_generate(self, prompt: str, **kwargs) -> str:
+        return self._raw_call(prompt)
+
+    # ── New DeepEval interface (required by versions that call *_raw_response) ──
+    def generate_raw_response(self, prompt: str, **kwargs) -> str:
+        return self._raw_call(prompt)
+
+    async def a_generate_raw_response(self, prompt: str, **kwargs) -> str:
+        return self._raw_call(prompt)
 
     def get_model_name(self) -> str:
         return f"ollama/{self.model_name}"
