@@ -19,72 +19,120 @@ import json
 import logging
 import math
 import re
+import sys
 import time
+from contextlib import contextmanager
 from typing import Generator, Optional, Tuple
 
 import ollama
 
 logger = logging.getLogger(__name__)
 
+# ── Optional tracer import (no-ops when backend package is unavailable) ───────
+try:
+    from backend.observability import tracer as _tracer
+    _TRACER_AVAILABLE = True
+except Exception:
+    _tracer = None  # type: ignore[assignment]
+    _TRACER_AVAILABLE = False
+
+# ── @opik_track facade (matches reference pattern) ────────────────────────────
+try:
+    from opik import track as _opik_track
+except ImportError:
+    def _opik_track(name=None, **kw):  # type: ignore[misc]
+        def _dec(fn):
+            return fn
+        return _dec
+
+
+@contextmanager
+def _noop_ctx():
+    """Fallback context manager used when the Opik tracer is unavailable."""
+    yield None
+
 
 def _measure_metric(metric, test_case) -> tuple[float, bool, str, float]:
     """
     Run metric.measure() and return (score, passed, reason, elapsed_ms).
-    Logs start/end/failure for every metric invocation.
+    Creates an Opik child span for each metric when the tracer is available.
     """
     name = metric.name
-    t0 = time.perf_counter()
+    eval_model_name = getattr(metric, "model", None)
+    eval_model_str = (
+        eval_model_name.get_model_name()
+        if hasattr(eval_model_name, "get_model_name")
+        else str(eval_model_name or "unknown")
+    )
+
     logger.debug("metric started", extra={"event": "metric_start", "metric": name})
 
-    try:
-        metric.measure(test_case)
-        score: float = round(metric.score, 3)
-        passed: bool = metric.is_successful()
-        reason: str = getattr(metric, "reason", "N/A") or "N/A"
-        elapsed = round((time.perf_counter() - t0) * 1000)
+    # Open a per-metric span; context manager is a no-op when tracer is unavailable.
+    span_ctx = (
+        _tracer.metric_span(name, metric.threshold, eval_model_str)
+        if _TRACER_AVAILABLE
+        else _noop_ctx()
+    )
 
-        # Detect anomalous scores
-        if score is None or (isinstance(score, float) and math.isnan(score)):
-            logger.error(
-                "metric returned invalid score",
+    with span_ctx as s:
+        t0 = time.perf_counter()
+        try:
+            metric.measure(test_case)
+            score: float = round(metric.score, 3)
+            passed: bool = metric.is_successful()
+            reason: str = getattr(metric, "reason", "N/A") or "N/A"
+            elapsed = round((time.perf_counter() - t0) * 1000)
+
+            if score is None or (isinstance(score, float) and math.isnan(score)):
+                logger.error(
+                    "metric returned invalid score",
+                    extra={"event": "metric_invalid_score", "metric": name,
+                           "score": str(score), "elapsed_ms": elapsed},
+                )
+                if _TRACER_AVAILABLE:
+                    _tracer.update_span(s, output={"score": 0.0, "passed": False},
+                                        metadata={"error": "invalid_score"})
+                return 0.0, False, "Invalid score (NaN/None)", elapsed
+
+            level = logging.INFO if passed else logging.WARNING
+            logger.log(
+                level,
+                "metric completed",
                 extra={
-                    "event": "metric_invalid_score",
+                    "event": "metric_done",
                     "metric": name,
-                    "score": str(score),
+                    "score": score,
+                    "threshold": metric.threshold,
+                    "passed": passed,
+                    "reason": reason[:200] if reason else "N/A",
                     "elapsed_ms": elapsed,
                 },
             )
-            return 0.0, False, "Invalid score (NaN/None)", elapsed
+            if _TRACER_AVAILABLE:
+                _tracer.update_span(
+                    s,
+                    output={"score": score, "passed": passed, "reason": reason[:300]},
+                    metadata={"threshold": metric.threshold, "elapsed_ms": elapsed},
+                )
+                score_key = name.lower().replace(" ", "_").replace("-", "_")
+                _tracer.log_feedback_score(
+                    s, score_key, score, "deepeval_metric",
+                    reason=reason[:200] if reason else None,
+                )
+            return score, passed, reason, elapsed
 
-        level = logging.INFO if passed else logging.WARNING
-        logger.log(
-            level,
-            "metric completed",
-            extra={
-                "event": "metric_done",
-                "metric": name,
-                "score": score,
-                "threshold": metric.threshold,
-                "passed": passed,
-                "reason": reason[:200] if reason else "N/A",
-                "elapsed_ms": elapsed,
-            },
-        )
-        return score, passed, reason, elapsed
-
-    except Exception as exc:
-        elapsed = round((time.perf_counter() - t0) * 1000)
-        logger.error(
-            "metric execution error",
-            exc_info=True,
-            extra={
-                "event": "metric_error",
-                "metric": name,
-                "error": str(exc),
-                "elapsed_ms": elapsed,
-            },
-        )
-        return 0.0, False, f"Error: {exc}", elapsed
+        except Exception as exc:
+            elapsed = round((time.perf_counter() - t0) * 1000)
+            logger.error(
+                "metric execution error",
+                exc_info=True,
+                extra={"event": "metric_error", "metric": name,
+                       "error": str(exc), "elapsed_ms": elapsed},
+            )
+            if _TRACER_AVAILABLE:
+                _tracer.update_span(s, output={"score": 0.0, "passed": False},
+                                    metadata={"error": str(exc)[:200], "elapsed_ms": elapsed})
+            return 0.0, False, f"Error: {exc}", elapsed
 
 _DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 _EVAL_MODEL    = os.getenv("OLLAMA_EVAL_MODEL", "llama3.2")
@@ -390,6 +438,7 @@ def _normalize_for_eval(output: dict) -> str:
 # ─────────────────────────────────────────────
 # 5. Main evaluation runner
 # ─────────────────────────────────────────────
+@_opik_track(name="deepeval_evaluate")
 def evaluate_test_cases(
     user_story: str,
     generated_output: dict,

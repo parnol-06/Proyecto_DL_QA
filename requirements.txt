@@ -6,4 +6,4 @@ python-multipart>=0.0.9
 python-dotenv>=1.0.1
 opik>=2.0.0,<3.0
 chromadb~=1.1.0
-crewai>=1.14.0
+crewai>=1.14.0,<2.0.0
