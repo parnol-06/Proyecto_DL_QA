@@ -13,16 +13,19 @@ Historia de usuario (UI / API)
          |
          v
   +--------------+
-  |   Frontend   |  SPA Vanilla JS — SSE streaming, export, batch mode
+  |   Frontend   |  SPA React + Vite — SSE streaming, export, batch mode
   |              |  WorkflowBar · AgentPipeline · MetricCards · filtros
   +--------------+
          |  HTTP / SSE
          v
-  +--------------+     +-------------------+
-  |   FastAPI    |---->|  RAG Service      |
-  |   Backend    |     |  ChromaDB +       |
-  |   (Uvicorn)  |     |  nomic-embed-text |
-  +--------------+     +-------------------+
+  +--------------------+     +-------------------+
+  |   FastAPI          |---->|  RAG Service      |
+  |   Backend          |     |  ChromaDB +       |
+  |   (Uvicorn)        |     |  nomic-embed-text |
+  |                    |     +-------------------+
+  |  ObservabilityMW   |
+  |  (request_id)      |
+  +--------------------+
          |
     +---------+----------+
     |                    |
@@ -44,7 +47,8 @@ Historia de usuario (UI / API)
          |
          v
   +--------------+
-  |     Opik     |  Trazas + experimentos (opcional)
+  |    Opik      |  Trazas distribuidas · feedback scores · correlación
+  |              |  Generate → Evaluate · TTFT · spans CrewAI
   +--------------+
 ```
 
@@ -104,6 +108,7 @@ docker compose down -v
 - Descarga de modelos Ollama desde la UI (`/pull-model`)
 - Persistencia de estado en `localStorage` (último resultado, modo agente, métricas)
 - Semáforo de concurrencia para evitar sobrecarga del LLM
+- **Observabilidad distribuida** con Opik: trazas completas, correlación Generate→Evaluate, TTFT
 
 ---
 
@@ -112,17 +117,23 @@ docker compose down -v
 ```
 Proyecto_DL_QA/
 ├── backend/
-│   ├── main.py              # FastAPI app + CORS + archivos estáticos
+│   ├── main.py              # FastAPI app + ObservabilityMiddleware + CORS
 │   ├── config.py            # Variables de entorno centralizadas
+│   ├── observability/       # Módulo de trazabilidad distribuida (Opik)
+│   │   ├── opik_manager.py  # Core: root_trace(), child_span(), spans especializados
+│   │   ├── tracer.py        # Shim público (re-exporta toda la API)
+│   │   ├── middleware.py    # ObservabilityMiddleware: X-Request-ID por request
+│   │   ├── decorators.py    # @trace_pipeline, @trace_agent, @trace_llm, @trace_rag, @trace_eval
+│   │   └── __init__.py
 │   ├── routes/
 │   │   ├── generate.py      # /generate, /generate/stream, /generate/agents, /generate/agents/stream
-│   │   └── evaluate.py      # /evaluate
+│   │   └── evaluate.py      # /evaluate, /evaluate/stream
 │   ├── services/
-│   │   ├── llm_service.py   # Ollama + Opik + streaming + reparación JSON + budget de tokens
-│   │   ├── rag_service.py   # ChromaDB + nomic-embed-text + chunking semántico (500 chars, 50 overlap)
-│   │   ├── agent_service.py # CrewAI 3 agentes + Opik + timing real + fallback directo LLM
-│   │   └── eval_service.py  # Wrapper DeepEval + streaming por métrica
-│   └── schemas/models.py    # Esquemas Pydantic
+│   │   ├── llm_service.py   # Ollama + streaming + TTFT + reparación JSON + spans LLM
+│   │   ├── rag_service.py   # ChromaDB + nomic-embed-text + embed_span + chromadb_query_span
+│   │   ├── agent_service.py # CrewAI 3 agentes + llm_inference_span por agente + fallback
+│   │   └── eval_service.py  # DeepEval + deepeval_span + metric_span por métrica
+│   └── schemas/models.py    # Esquemas Pydantic (incluye *_trace_id para correlación)
 ├── evaluator/
 │   └── metrics.py           # 5 métricas GEval personalizadas
 ├── frontend/
@@ -142,20 +153,20 @@ Proyecto_DL_QA/
 │   ├── run_experiment.py    # Experimento 10 US × 2 configs → experiments/results.json
 │   └── demo.py              # Demo: 3 US con agentes + evaluación + comparativa de modelos
 ├── tests/
-│   ├── conftest.py          # Fixture AsyncClient para tests de integración
-│   ├── test_generate.py     # Validación input, reparación JSON, generación
-│   ├── test_health.py       # Health check
-│   ├── test_models.py       # /models con y sin Ollama disponible
-│   ├── test_rag_service.py  # Chunking, búsqueda semántica, construcción de índice
-│   ├── test_agent_service.py# Parseo reviewer/optimizer, pipeline CrewAI, fallback
-│   └── test_stream.py       # SSE /generate/stream y /generate/agents/stream
+│   ├── conftest.py
+│   ├── test_generate.py
+│   ├── test_health.py
+│   ├── test_models.py
+│   ├── test_rag_service.py
+│   ├── test_agent_service.py
+│   └── test_stream.py
 ├── experiments/             # Resultados del experimento comparativo (JSON)
 ├── chroma_db/               # Vector store ChromaDB (generado en ejecución)
 ├── Dockerfile               # Multi-stage build, usuario no-root (appuser:1001)
 ├── docker-compose.yml
 ├── entrypoint.sh            # Espera Ollama → descarga modelos → construye RAG → uvicorn
 ├── requirements.txt         # Dependencias core
-├── requirements-eval.txt    # DeepEval (instalación separada, requiere Python ≤ 3.12)
+├── requirements-eval.txt    # DeepEval (requiere Python ≤ 3.12)
 ├── requirements-dev.txt     # Dependencias de desarrollo
 └── .env.example
 ```
@@ -171,12 +182,12 @@ Copia `.env.example` a `.env` para configurar:
 | `OLLAMA_MODEL` | Modelo LLM para generación | — |
 | `OLLAMA_EVAL_MODEL` | Modelo LLM para evaluación (distinto para evitar auto-evaluación) | — |
 | `OLLAMA_EMBED_MODEL` | Modelo de embedding (se descarga automáticamente) | `nomic-embed-text` |
-| `OLLAMA_TEMPERATURE` | Temperatura del LLM (baja para consistencia) | `0.25` |
+| `OLLAMA_TEMPERATURE` | Temperatura del LLM | `0.25` |
 | `OLLAMA_CONTEXT_SIZE` | Ventana de contexto en tokens | `8192` |
 | `OLLAMA_HOST` | Solo necesario en Docker | `http://ollama:11434` |
-| `OPIK_API_KEY` | Trazabilidad Opik (opcional) | — |
-| `OPIK_WORKSPACE` | Workspace Opik | — |
-| `OPIK_PROJECT_NAME` | Proyecto Opik | — |
+| `OPIK_API_KEY` | API key de Opik (opcional — desactiva trazas si no se define) | — |
+| `OPIK_WORKSPACE` | Workspace de Opik | — |
+| `OPIK_PROJECT_NAME` | Nombre del proyecto en Opik | `Qa_trace` |
 | `ALLOWED_ORIGINS` | Orígenes CORS permitidos | `["*"]` |
 
 ---
@@ -192,6 +203,8 @@ Documentación interactiva Swagger: **http://localhost:8000/docs**
 | POST | `/generate/agents` | Pipeline completo de 3 agentes |
 | POST | `/generate/agents/stream` | Pipeline de agentes con streaming SSE |
 | POST | `/evaluate` | Evaluación DeepEval (5 métricas) |
+| POST | `/evaluate/stream` | Evaluación con streaming SSE por métrica |
+| POST | `/regenerate-tc` | Regenera un caso de prueba individual |
 | POST | `/pull-model` | Descarga un modelo Ollama desde la UI |
 | GET  | `/models` | Lista modelos Ollama disponibles |
 | GET  | `/rag/status` | Estado del índice RAG |
@@ -210,9 +223,8 @@ Historia de usuario
 +---------------------+
 |  Agente 1           |
 |  Generador          |
-|  Genera >= 12 TCs   |
-|  en JSON cubriendo  |
-|  7 categorías       |
+|  Genera TCs en JSON |
+|  cubriendo 7 cats.  |
 +---------------------+
        |
        v
@@ -241,13 +253,81 @@ Historia de usuario
   Suite final consolidada
 ```
 
-Si CrewAI falla, el servicio hace fallback automático a generación directa con LLM. Cada ejecución queda registrada en Opik con trazas individuales por agente y tiempos reales de procesamiento.
+Si CrewAI falla, el servicio hace fallback automático a generación directa con LLM. Cada ejecución queda trazada en Opik con spans individuales por agente y tiempos reales de LLM.
+
+---
+
+## Observabilidad (Opik)
+
+El módulo `backend/observability/` implementa trazabilidad distribuida de nivel enterprise sobre [Opik](https://www.comet.com/site/products/opik/).
+
+### Jerarquía de spans por endpoint
+
+```
+generate_agents_stream_request  (root trace)
+├── request_validation
+├── rag_pipeline                (si use_rag=true)
+│   ├── embedding_generation
+│   └── chromadb_query
+├── response_stream
+│   └── crew_pipeline
+│       ├── agent_1_generador
+│       │   ├── llm_call_generador
+│       │   └── llm_json_parse
+│       ├── agent_2_revisor
+│       │   └── llm_call_revisor
+│       └── agent_3_optimizador
+│           └── llm_call_optimizador
+└── response_serialization
+
+evaluate_request  (root trace)
+├── request_validation
+├── deepeval_evaluation
+│   ├── metric_test_coverage
+│   ├── metric_test_relevancy
+│   ├── metric_test_consistency
+│   ├── metric_step_specificity
+│   └── metric_non_functional_balance
+└── response_serialization
+```
+
+### Feedback scores registrados
+
+| Pipeline | Scores |
+|---|---|
+| `generate_normal` | `coverage_pct`, `tc_completeness`, `output_validity`, `rag_enabled` |
+| `generate_agents` | `reviewer_score`, `coverage_pct`, `tc_completeness`, `pipeline_quality`, `rag_context_quality`, `optimization_coverage` |
+| `evaluate` | `overall_score`, `test_coverage`, `test_relevancy`, `test_consistency`, `step_specificity`, `nonfunctional_balance` |
+| `generate_stream` | `stream_completion`, `ttft_quality` |
+
+### Correlación Generate → Evaluate
+
+Cada respuesta de `/generate*` incluye `generation_trace_id`. Al pasarlo en `EvaluateRequest.source_generation_trace_id`, la traza de evaluación queda vinculada a la de generación en el dashboard de Opik.
+
+```json
+// 1. Generar
+POST /generate/agents
+→ { "generation_trace_id": "abc123..." }
+
+// 2. Evaluar con correlación
+POST /evaluate
+{ "source_generation_trace_id": "abc123...", ... }
+→ { "evaluation_trace_id": "def456..." }
+```
+
+### Configuración
+
+```env
+OPIK_API_KEY=tu_api_key
+OPIK_WORKSPACE=tu_workspace
+OPIK_PROJECT_NAME=Qa_trace
+```
+
+Si `OPIK_API_KEY` no está definida, las trazas se desactivan silenciosamente sin afectar el funcionamiento.
 
 ---
 
 ## Métricas de evaluación (DeepEval)
-
-Las 5 métricas GEval personalizadas evalúan distintas dimensiones de la suite generada:
 
 | Métrica | Descripción |
 |---|---|
