@@ -6,11 +6,13 @@ Usa ChromaDB como vector store y nomic-embed-text (Ollama) para embeddings.
 import asyncio
 import logging
 import os
+import time
 
 import chromadb
 import ollama
 
 from backend.config import OLLAMA_HOST
+from backend.observability import tracer
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,22 @@ COLLECTION   = "qa_knowledge"
 CHUNK_SIZE   = 500
 CHUNK_OVERLAP = 50
 
+
 # ── Embedding ─────────────────────────────────────────────────────────────────
 
 def _embed(text: str) -> list[float]:
-    """Genera embedding con nomic-embed-text via Ollama."""
-    response = _ollama.embed(model=EMBED_MODEL, input=text)
-    return response["embeddings"][0]
+    """Genera embedding con nomic-embed-text via Ollama. Traced via embed_span."""
+    with tracer.embed_span(text[:200]) as s:
+        t0 = time.monotonic()
+        response = _ollama.embed(model=EMBED_MODEL, input=text)
+        elapsed_ms = round((time.monotonic() - t0) * 1000)
+        embedding = response["embeddings"][0]
+        tracer.update_span(
+            s,
+            output={"embedding_dim": len(embedding)},
+            metadata={"embed_time_ms": elapsed_ms, "input_chars": len(text)},
+        )
+        return embedding
 
 
 def _get_collection() -> chromadb.Collection:
@@ -52,48 +64,59 @@ def _chunk_text(text: str) -> list[str]:
 
 # ── Indexación ────────────────────────────────────────────────────────────────
 
+@tracer.track("rag_build_index")
 def build_index(corpus_dir: str = CORPUS_DIR) -> int:
     """
     Lee .md y .txt de corpus_dir, genera embeddings y guarda en ChromaDB.
     Retorna el número de chunks indexados.
     """
-    collection = _get_collection()
+    with tracer.child_span(
+        "chromadb_build_index",
+        span_type="tool",
+        input_data={"corpus_dir": corpus_dir},
+        metadata={"component": "chromadb", "operation": "build_index", "embed_model": EMBED_MODEL},
+    ) as s:
+        collection = _get_collection()
 
-    # Limpiar colección existente para re-indexar
-    existing = collection.count()
-    if existing > 0:
-        collection.delete(where={"source": {"$ne": ""}})
-        logger.info("Colección limpiada | chunks previos=%d", existing)
+        existing = collection.count()
+        if existing > 0:
+            collection.delete(where={"source": {"$ne": ""}})
+            logger.info("Colección limpiada | chunks previos=%d", existing)
 
-    extensions = (".md", ".txt")
-    total_chunks = 0
+        extensions = (".md", ".txt")
+        total_chunks = 0
 
-    for fname in os.listdir(corpus_dir):
-        if not fname.lower().endswith(extensions):
-            continue
-        fpath = os.path.join(corpus_dir, fname)
-        with open(fpath, encoding="utf-8") as f:
-            text = f.read()
+        for fname in os.listdir(corpus_dir):
+            if not fname.lower().endswith(extensions):
+                continue
+            fpath = os.path.join(corpus_dir, fname)
+            with open(fpath, encoding="utf-8") as f:
+                text = f.read()
 
-        chunks = _chunk_text(text)
-        logger.info("Indexando %s | chunks=%d", fname, len(chunks))
+            chunks = _chunk_text(text)
+            logger.info("Indexando %s | chunks=%d", fname, len(chunks))
 
-        for i, chunk in enumerate(chunks):
-            try:
-                embedding = _embed(chunk)
-                chunk_id = f"{fname}_chunk_{i}"
-                collection.upsert(
-                    ids=[chunk_id],
-                    embeddings=[embedding],
-                    documents=[chunk],
-                    metadatas=[{"source": fname, "chunk": i}],
-                )
-                total_chunks += 1
-            except Exception as exc:
-                logger.warning("Error indexando chunk %d de %s: %s", i, fname, exc)
+            for i, chunk in enumerate(chunks):
+                try:
+                    embedding = _embed(chunk)
+                    chunk_id = f"{fname}_chunk_{i}"
+                    collection.upsert(
+                        ids=[chunk_id],
+                        embeddings=[embedding],
+                        documents=[chunk],
+                        metadatas=[{"source": fname, "chunk": i}],
+                    )
+                    total_chunks += 1
+                except Exception as exc:
+                    logger.warning("Error indexando chunk %d de %s: %s", i, fname, exc)
 
-    logger.info("Índice construido | total_chunks=%d", total_chunks)
-    return total_chunks
+        logger.info("Índice construido | total_chunks=%d", total_chunks)
+        tracer.update_span(
+            s,
+            output={"total_chunks_indexed": total_chunks},
+            metadata={"files_processed": len(os.listdir(corpus_dir))},
+        )
+        return total_chunks
 
 
 # ── Búsqueda semántica ────────────────────────────────────────────────────────
@@ -102,6 +125,7 @@ def semantic_search(query: str, k: int = 3) -> str:
     """
     Busca los k chunks más relevantes para la query.
     Retorna texto concatenado o "" si no hay índice o falla.
+    Creates child spans for embed + query phases.
     """
     try:
         collection = _get_collection()
@@ -109,16 +133,53 @@ def semantic_search(query: str, k: int = 3) -> str:
             logger.debug("Vector store vacío — RAG deshabilitado")
             return ""
 
+        # Embedding span is created inside _embed()
+        t0 = time.monotonic()
         embedding = _embed(query)
-        n = min(k, collection.count())
-        results = collection.query(query_embeddings=[embedding], n_results=n)
-        docs = results.get("documents", [[]])[0]
-        if not docs:
-            return ""
+        embed_ms = round((time.monotonic() - t0) * 1000)
 
-        context = "\n\n---\n\n".join(docs)
-        logger.info("RAG: %d fragmentos recuperados para la consulta", len(docs))
-        return context
+        # ChromaDB query span
+        with tracer.child_span(
+            "chromadb_query",
+            span_type="tool",
+            input_data={"k": min(k, collection.count()), "collection": COLLECTION},
+            metadata={
+                "component": "chromadb",
+                "operation": "query",
+                "embed_time_ms": embed_ms,
+            },
+        ) as s:
+            t1 = time.monotonic()
+            n = min(k, collection.count())
+            results = collection.query(query_embeddings=[embedding], n_results=n)
+            query_ms = round((time.monotonic() - t1) * 1000)
+
+            docs = results.get("documents", [[]])[0]
+            if not docs:
+                tracer.update_span(s, output={"docs_found": 0}, metadata={"query_time_ms": query_ms})
+                return ""
+
+            context = "\n\n---\n\n".join(docs)
+            tracer.update_span(
+                s,
+                output={
+                    "docs_found": len(docs),
+                    "context_chars": len(context),
+                    "context_preview": context[:200],
+                },
+                metadata={"query_time_ms": query_ms},
+            )
+            logger.info(
+                "RAG: %d fragmentos recuperados",
+                len(docs),
+                extra={
+                    "docs_found": len(docs),
+                    "context_chars": len(context),
+                    "embed_time_ms": embed_ms,
+                    "query_time_ms": query_ms,
+                },
+            )
+            return context
 
     except Exception as exc:
         logger.warning("RAG semantic_search falló: %s", exc)
@@ -134,6 +195,6 @@ def is_index_built() -> bool:
 
 
 async def async_semantic_search(query: str, k: int = 3) -> str:
-    """Versión async-safe de semantic_search: ejecuta en thread executor para no bloquear el event loop."""
+    """Versión async-safe de semantic_search: ejecuta en thread executor."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, semantic_search, query, k)

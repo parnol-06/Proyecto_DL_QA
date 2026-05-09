@@ -21,6 +21,7 @@ class GenerateResponse(BaseModel):
     potential_bugs: list
     coverage_summary: dict
     raw_story: str
+    generation_trace_id: str = Field("", description="Opik trace_id — pásalo en EvaluateRequest.source_generation_trace_id")
 
 
 class AgentTrace(BaseModel):
@@ -50,6 +51,7 @@ class AgentGenerateResponse(BaseModel):
     agent_trace: list[AgentTrace]
     used_fallback: bool = False
     optimizer_output: dict = Field(default_factory=dict)
+    generation_trace_id: str = Field("", description="Opik trace_id — pásalo en EvaluateRequest.source_generation_trace_id")
 
 
 class RegenerateTCRequest(BaseModel):
@@ -66,6 +68,10 @@ class EvaluateRequest(BaseModel):
     generated_output: dict
     model: str = OLLAMA_MODEL
     eval_model: str = Field("", description="Modelo para evaluación GEval (debe diferir del de generación para evitar sesgo)")
+    source_generation_trace_id: str = Field(
+        "",
+        description="Opik trace_id de la generación que produjo estos casos — habilita correlación Generate → Evaluate",
+    )
 
 
 class EvaluateResponse(BaseModel):
@@ -76,3 +82,4 @@ class EvaluateResponse(BaseModel):
     nonfunctional_balance: float = 0.0
     overall: float
     model_used: str
+    evaluation_trace_id: str = Field("", description="Opik trace_id de esta evaluación")

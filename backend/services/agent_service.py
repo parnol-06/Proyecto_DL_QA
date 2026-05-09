@@ -1,45 +1,48 @@
 """
-Agent Service — Pipeline de 3 agentes CrewAI para generación, revisión y optimización de test cases.
+Agent Service — Pipeline de 3 agentes CrewAI con observabilidad completa.
 
-Agente 1 — Generador   : Produce la suite de test cases en JSON
-Agente 2 — Revisor     : Evalúa cobertura, calidad y gaps de la suite generada
-Agente 3 — Optimizador : Identifica y prioriza los casos críticos faltantes
+Span hierarchy produced:
+
+crew_pipeline
+├── agent_1_generador
+│   ├── llm_call_generador   ← wraps Crew.kickoff() to capture timing
+│   └── llm_json_parse
+├── agent_2_revisor
+│   └── llm_call_revisor
+└── agent_3_optimizador
+    └── llm_call_optimizador
+
+Feedback scores per agent:
+- tc_completeness (Generador)
+- reviewer_score  (Revisor)
+- optimization_coverage (Optimizador)
+
+Pipeline-level feedback scores:
+- reviewer_score, coverage_pct, tc_completeness
 """
 
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.config import OLLAMA_HOST, OPIK_API_KEY, OPIK_WORKSPACE, OPIK_PROJECT_NAME
+from backend.config import OLLAMA_HOST
+from backend.observability import tracer
 from backend.schemas.models import AgentGenerateRequest, AgentGenerateResponse, AgentTrace
 from backend.services.llm_service import _parse_llm_output, _build_response
 
 logger = logging.getLogger(__name__)
 
-# ── Opik ─────────────────────────────────────────────────────────────────────
-_OPIK_ENABLED = False
-try:
-    import opik
-    if OPIK_API_KEY:
-        opik.configure(api_key=OPIK_API_KEY, workspace=OPIK_WORKSPACE or None, force=True)
-        _OPIK_ENABLED = True
-except Exception:
-    pass
-
-# ── Executor para correr CrewAI (síncrono) desde código async ─────────────────
 _executor = ThreadPoolExecutor(max_workers=1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Output parsers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_optimizer_output(text: str) -> dict:
-    """Extrae el JSON del output del Optimizador. Fallback a dict genérico."""
     try:
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
@@ -54,7 +57,6 @@ def _parse_optimizer_output(text: str) -> dict:
 
 
 def _parse_reviewer_output(text: str) -> dict:
-    """Extrae el JSON del output del Revisor. Fallback a dict genérico."""
     try:
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
@@ -79,7 +81,6 @@ def _build_category_dist(tc_count: int, categories: list) -> list[tuple[str, int
 
 
 def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
-    """Construye los agentes y tareas CrewAI reutilizables."""
     from crewai import Agent, Task, LLM
 
     model_tag   = f"ollama/{req.model}"
@@ -208,130 +209,355 @@ def _build_agents_and_tasks(req: AgentGenerateRequest, rag_context: str):
     return generator, reviewer, optimizer, task_generate, task_review, task_optimize
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Synchronous crew executor (runs in thread pool)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _run_crew(req: AgentGenerateRequest, rag_context: str) -> dict:
-    """Ejecuta el pipeline CrewAI de forma síncrona."""
+    """
+    Executes the 3-agent CrewAI pipeline synchronously.
+    Runs in a thread executor — ContextVars are inherited (Python 3.7+).
+
+    Each Crew.kickoff() is wrapped in llm_inference_span so the LLM call
+    timing is captured as a named span in the Opik trace hierarchy.
+    """
     from crewai import Crew
 
     generator, reviewer, optimizer, task_generate, task_review, task_optimize = \
         _build_agents_and_tasks(req, rag_context)
 
-    t0 = time.monotonic()
-    Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
-    t_gen = round(time.monotonic() - t0, 2)
+    parsed_data: dict = {}
+    review: dict = {}
+    optimizer_result: dict = {}
+    t_gen = t_rev = t_opt = 0.0
+    tc_count_generated = 0
+    verdict = "?"
+    rev_score = 0.0
+    added_count = 0
+    opt_summary = ""
 
-    t1 = time.monotonic()
-    Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
-    t_rev = round(time.monotonic() - t1, 2)
+    with tracer.crew_pipeline_span(req.tc_count, req.model, bool(rag_context)) as pipeline_s:
 
-    t2 = time.monotonic()
-    Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
-    t_opt = round(time.monotonic() - t2, 2)
+        # ── Agente 1: Generador ──────────────────────────────────────────────
+        with tracer.agent_span("Generador", "QA Test Case Generator", step=1, total=3) as s:
+            t0 = time.monotonic()
+            with tracer.llm_inference_span("Generador", req.model, task_generate.description[:200]):
+                Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
+            t_gen = round(time.monotonic() - t0, 2)
 
-    gen_output = task_generate.output.raw if task_generate.output else ""
-    rev_output = task_review.output.raw   if task_review.output  else ""
-    opt_output = task_optimize.output.raw if task_optimize.output else ""
+            gen_output = task_generate.output.raw if task_generate.output else ""
+            with tracer.parse_span(len(gen_output), component="crewai_generator_output") as ps:
+                try:
+                    parsed_data = _parse_llm_output(gen_output)
+                    tracer.update_span(ps, output={
+                        "success": True,
+                        "tc_count": len(parsed_data.get("test_cases", [])),
+                    })
+                except Exception as exc:
+                    tracer.update_span(ps, output={"success": False, "reason": str(exc)[:200]})
+                    logger.warning("Error parseando output del Generador: %s", exc)
+                    parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
 
-    try:
-        parsed_data = _parse_llm_output(gen_output)
-    except Exception as exc:
-        logger.warning("Error parseando output del Generador: %s", exc)
-        parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
+            tc_count_generated = len(parsed_data.get("test_cases", []))
+            tc_completeness = min(1.0, tc_count_generated / max(1, req.tc_count))
 
-    review         = _parse_reviewer_output(rev_output)
-    optimizer_result = _parse_optimizer_output(opt_output)
+            tracer.update_span(
+                s,
+                output={
+                    "tc_count": tc_count_generated,
+                    "edge_count": len(parsed_data.get("edge_scenarios", [])),
+                    "bug_count": len(parsed_data.get("potential_bugs", [])),
+                    "output_chars": len(gen_output),
+                },
+                metadata={
+                    "elapsed_s": t_gen,
+                    "agent": "Generador",
+                    "model": req.model,
+                },
+            )
+            tracer.log_feedback_score(s, "tc_completeness", tc_completeness, "generation",
+                                      reason=f"{tc_count_generated}/{req.tc_count} test cases generados")
 
-    agent_trace = [
-        AgentTrace(agent="Generador",   elapsed_s=t_gen,
-                   summary=f"{len(parsed_data.get('test_cases', []))} casos generados"),
-        AgentTrace(agent="Revisor",     elapsed_s=t_rev,
-                   summary=f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}"),
-        AgentTrace(agent="Optimizador", elapsed_s=t_opt,
-                   summary=f"{len(optimizer_result.get('added_cases', []))} casos optimizados | {optimizer_result.get('optimization_summary', '')[:80]}"),
-    ]
+        # ── Agente 2: Revisor ────────────────────────────────────────────────
+        with tracer.agent_span("Revisor", "QA Quality Reviewer", step=2, total=3) as s:
+            t1 = time.monotonic()
+            with tracer.llm_inference_span("Revisor", req.model, task_review.description[:200]):
+                Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
+            t_rev = round(time.monotonic() - t1, 2)
+
+            rev_output = task_review.output.raw if task_review.output else ""
+            review = _parse_reviewer_output(rev_output)
+            verdict = review.get("verdict", "?")
+            rev_score = float(review.get("score", 0.0))
+
+            tracer.update_span(
+                s,
+                output={
+                    "verdict": verdict,
+                    "score": rev_score,
+                    "gaps": review.get("gaps", [])[:5],
+                    "strengths": review.get("strengths", [])[:3],
+                    "recommendation": review.get("recommendation", "")[:300],
+                },
+                metadata={
+                    "elapsed_s": t_rev,
+                    "agent": "Revisor",
+                    "model": req.model,
+                },
+            )
+            tracer.log_feedback_score(s, "reviewer_score", rev_score, "quality",
+                                      reason=f"Veredicto: {verdict}")
+
+        # ── Agente 3: Optimizador ────────────────────────────────────────────
+        with tracer.agent_span("Optimizador", "QA Coverage Optimizer", step=3, total=3) as s:
+            t2 = time.monotonic()
+            with tracer.llm_inference_span("Optimizador", req.model, task_optimize.description[:200]):
+                Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
+            t_opt = round(time.monotonic() - t2, 2)
+
+            opt_output = task_optimize.output.raw if task_optimize.output else ""
+            optimizer_result = _parse_optimizer_output(opt_output)
+            added_count = len(optimizer_result.get("added_cases", []))
+            opt_summary = optimizer_result.get("optimization_summary", "")
+            optimization_ratio = min(1.0, added_count / 3) if added_count > 0 else 0.0
+
+            tracer.update_span(
+                s,
+                output={
+                    "added_cases_count": added_count,
+                    "priority_gaps_count": len(optimizer_result.get("priority_gaps", [])),
+                    "optimization_summary": opt_summary[:300],
+                },
+                metadata={
+                    "elapsed_s": t_opt,
+                    "agent": "Optimizador",
+                    "model": req.model,
+                },
+            )
+            tracer.log_feedback_score(s, "optimization_coverage", optimization_ratio, "generation",
+                                      reason=f"{added_count} casos críticos agregados")
+
+        # ── Pipeline summary ─────────────────────────────────────────────────
+        coverage_raw = parsed_data.get("coverage_summary", {})
+        coverage_pct = (
+            float(coverage_raw.get("estimated_coverage_percent", 0)) / 100.0
+            if isinstance(coverage_raw, dict) else 0.0
+        )
+        total_elapsed = round(t_gen + t_rev + t_opt, 2)
+
+        tracer.update_span(
+            pipeline_s,
+            output={
+                "tc_count_generated": tc_count_generated,
+                "reviewer_verdict": verdict,
+                "reviewer_score": rev_score,
+                "optimizer_added": added_count,
+                "total_elapsed_s": total_elapsed,
+                "coverage_pct": round(coverage_pct * 100, 1),
+            },
+            metadata={
+                "model": req.model,
+                "rag_used": bool(rag_context),
+                "agent_count": 3,
+            },
+        )
+        tracer.log_pipeline_feedback(pipeline_s, {
+            "reviewer_score":   (rev_score, "quality", f"Veredicto del Revisor: {verdict}"),
+            "coverage_pct":     (min(1.0, coverage_pct), "generation", "Cobertura estimada de categorías"),
+            "tc_completeness":  (min(1.0, tc_count_generated / max(1, req.tc_count)), "generation",
+                                 f"{tc_count_generated}/{req.tc_count} test cases"),
+            "optimization_coverage": (min(1.0, added_count / 3) if added_count else 0.0, "generation",
+                                      f"{added_count} casos añadidos por optimizador"),
+        })
 
     return {
         "parsed_data": parsed_data,
-        "agent_trace": agent_trace,
+        "agent_trace": [
+            AgentTrace(agent="Generador",   elapsed_s=t_gen,
+                       summary=f"{tc_count_generated} casos generados"),
+            AgentTrace(agent="Revisor",     elapsed_s=t_rev,
+                       summary=f"Veredicto: {verdict} | Score: {rev_score:.2f}"),
+            AgentTrace(agent="Optimizador", elapsed_s=t_opt,
+                       summary=f"{added_count} casos optimizados | {opt_summary[:80]}"),
+        ],
         "review": review,
         "optimizer_result": optimizer_result,
         "used_fallback": False,
+        "reviewer_score": rev_score,
+        "reviewer_verdict": verdict,
+        "coverage_pct": coverage_pct,
     }
 
 
 def _run_crew_streaming(req: AgentGenerateRequest, rag_context: str, put_event) -> None:
     """
-    Igual que _run_crew pero llama a put_event() tras cada agente.
-    Permite streaming SSE sin bloquear el event loop.
+    Same as _run_crew but calls put_event() after each agent.
+    Runs in thread executor — ContextVars are inherited.
     """
     from crewai import Crew
 
     generator, reviewer, optimizer, task_generate, task_review, task_optimize = \
         _build_agents_and_tasks(req, rag_context)
 
-    # ── Agente 1: Generador ──────────────────────────────────────────────────
-    put_event({"event": "agent_start", "agent": "Generador", "step": 1, "total": 3})
-    t0 = time.monotonic()
-    Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
-    t_gen = round(time.monotonic() - t0, 2)
+    parsed_data: dict = {}
+    review: dict = {}
+    optimizer_result: dict = {}
+    t_gen = t_rev = t_opt = 0.0
+    tc_count_generated = 0
+    verdict = "?"
+    rev_score = 0.0
+    added_count = 0
+    opt_summary = ""
 
-    gen_output = task_generate.output.raw if task_generate.output else ""
-    try:
-        parsed_data = _parse_llm_output(gen_output)
-    except Exception as exc:
-        logger.warning("Error parseando output del Generador: %s", exc)
-        parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
+    with tracer.crew_pipeline_span(req.tc_count, req.model, bool(rag_context)) as pipeline_s:
 
-    for tc in parsed_data.get("test_cases") or []:
-        put_event({"event": "case", "case": tc})
+        # ── Agente 1: Generador ──────────────────────────────────────────────
+        put_event({"event": "agent_start", "agent": "Generador", "step": 1, "total": 3})
+        with tracer.agent_span("Generador", "QA Test Case Generator", step=1, total=3) as s:
+            t0 = time.monotonic()
+            with tracer.llm_inference_span("Generador", req.model, task_generate.description[:200]):
+                Crew(agents=[generator], tasks=[task_generate], verbose=False).kickoff()
+            t_gen = round(time.monotonic() - t0, 2)
 
-    put_event({
-        "event": "agent_done", "agent": "Generador", "step": 1,
-        "elapsed_s": t_gen,
-        "summary": f"{len(parsed_data.get('test_cases', []))} casos generados",
-        "data": parsed_data,
-    })
+            gen_output = task_generate.output.raw if task_generate.output else ""
+            with tracer.parse_span(len(gen_output), component="crewai_generator_output") as ps:
+                try:
+                    parsed_data = _parse_llm_output(gen_output)
+                    tracer.update_span(ps, output={
+                        "success": True,
+                        "tc_count": len(parsed_data.get("test_cases", [])),
+                    })
+                except Exception as exc:
+                    tracer.update_span(ps, output={"success": False, "reason": str(exc)[:200]})
+                    logger.warning("Error parseando output del Generador: %s", exc)
+                    parsed_data = {"test_cases": [], "edge_scenarios": [], "potential_bugs": [], "coverage_summary": {}}
 
-    # ── Agente 2: Revisor ────────────────────────────────────────────────────
-    put_event({"event": "agent_start", "agent": "Revisor", "step": 2, "total": 3})
-    t1 = time.monotonic()
-    Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
-    t_rev = round(time.monotonic() - t1, 2)
+            tc_count_generated = len(parsed_data.get("test_cases", []))
+            tc_completeness = min(1.0, tc_count_generated / max(1, req.tc_count))
 
-    review = _parse_reviewer_output(task_review.output.raw if task_review.output else "")
-    put_event({
-        "event": "agent_done", "agent": "Revisor", "step": 2,
-        "elapsed_s": t_rev,
-        "summary": f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}",
-        "data": review,
-    })
+            tracer.update_span(
+                s,
+                output={
+                    "tc_count": tc_count_generated,
+                    "edge_count": len(parsed_data.get("edge_scenarios", [])),
+                    "output_chars": len(gen_output),
+                },
+                metadata={"elapsed_s": t_gen, "agent": "Generador"},
+            )
+            tracer.log_feedback_score(s, "tc_completeness", tc_completeness, "generation",
+                                      reason=f"{tc_count_generated}/{req.tc_count} casos generados")
 
-    # ── Agente 3: Optimizador ────────────────────────────────────────────────
-    put_event({"event": "agent_start", "agent": "Optimizador", "step": 3, "total": 3})
-    t2 = time.monotonic()
-    Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
-    t_opt = round(time.monotonic() - t2, 2)
+        for tc in parsed_data.get("test_cases") or []:
+            put_event({"event": "case", "case": tc})
+        put_event({
+            "event": "agent_done", "agent": "Generador", "step": 1,
+            "elapsed_s": t_gen,
+            "summary": f"{tc_count_generated} casos generados",
+            "data": parsed_data,
+        })
 
-    optimizer_result = _parse_optimizer_output(task_optimize.output.raw if task_optimize.output else "")
-    for tc in optimizer_result.get("added_cases") or []:
-        put_event({"event": "case", "case": tc})
+        # ── Agente 2: Revisor ────────────────────────────────────────────────
+        put_event({"event": "agent_start", "agent": "Revisor", "step": 2, "total": 3})
+        with tracer.agent_span("Revisor", "QA Quality Reviewer", step=2, total=3) as s:
+            t1 = time.monotonic()
+            with tracer.llm_inference_span("Revisor", req.model, task_review.description[:200]):
+                Crew(agents=[reviewer], tasks=[task_review], verbose=False).kickoff()
+            t_rev = round(time.monotonic() - t1, 2)
 
-    put_event({
-        "event": "agent_done", "agent": "Optimizador", "step": 3,
-        "elapsed_s": t_opt,
-        "summary": f"{len(optimizer_result.get('added_cases', []))} casos optimizados | {optimizer_result.get('optimization_summary', '')[:80]}",
-        "data": optimizer_result,
-    })
+            rev_output = task_review.output.raw if task_review.output else ""
+            review = _parse_reviewer_output(rev_output)
+            verdict = review.get("verdict", "?")
+            rev_score = float(review.get("score", 0.0))
 
-    # ── Evento final con respuesta completa ──────────────────────────────────
+            tracer.update_span(
+                s,
+                output={
+                    "verdict": verdict,
+                    "score": rev_score,
+                    "gaps": review.get("gaps", [])[:5],
+                    "strengths": review.get("strengths", [])[:3],
+                    "recommendation": review.get("recommendation", "")[:300],
+                },
+                metadata={"elapsed_s": t_rev, "agent": "Revisor"},
+            )
+            tracer.log_feedback_score(s, "reviewer_score", rev_score, "quality",
+                                      reason=f"Veredicto: {verdict}")
+
+        put_event({
+            "event": "agent_done", "agent": "Revisor", "step": 2,
+            "elapsed_s": t_rev,
+            "summary": f"Veredicto: {verdict} | Score: {rev_score:.2f}",
+            "data": review,
+        })
+
+        # ── Agente 3: Optimizador ────────────────────────────────────────────
+        put_event({"event": "agent_start", "agent": "Optimizador", "step": 3, "total": 3})
+        with tracer.agent_span("Optimizador", "QA Coverage Optimizer", step=3, total=3) as s:
+            t2 = time.monotonic()
+            with tracer.llm_inference_span("Optimizador", req.model, task_optimize.description[:200]):
+                Crew(agents=[optimizer], tasks=[task_optimize], verbose=False).kickoff()
+            t_opt = round(time.monotonic() - t2, 2)
+
+            opt_output = task_optimize.output.raw if task_optimize.output else ""
+            optimizer_result = _parse_optimizer_output(opt_output)
+            added_count = len(optimizer_result.get("added_cases", []))
+            opt_summary = optimizer_result.get("optimization_summary", "")
+            optimization_ratio = min(1.0, added_count / 3) if added_count > 0 else 0.0
+
+            tracer.update_span(
+                s,
+                output={
+                    "added_cases_count": added_count,
+                    "priority_gaps_count": len(optimizer_result.get("priority_gaps", [])),
+                    "optimization_summary": opt_summary[:300],
+                },
+                metadata={"elapsed_s": t_opt, "agent": "Optimizador"},
+            )
+            tracer.log_feedback_score(s, "optimization_coverage", optimization_ratio, "generation",
+                                      reason=f"{added_count} casos críticos agregados")
+
+        for tc in optimizer_result.get("added_cases") or []:
+            put_event({"event": "case", "case": tc})
+        put_event({
+            "event": "agent_done", "agent": "Optimizador", "step": 3,
+            "elapsed_s": t_opt,
+            "summary": f"{added_count} casos optimizados | {opt_summary[:80]}",
+            "data": optimizer_result,
+        })
+
+        # ── Pipeline summary ─────────────────────────────────────────────────
+        coverage_raw = parsed_data.get("coverage_summary", {})
+        coverage_pct = (
+            float(coverage_raw.get("estimated_coverage_percent", 0)) / 100.0
+            if isinstance(coverage_raw, dict) else 0.0
+        )
+
+        tracer.update_span(
+            pipeline_s,
+            output={
+                "tc_count_generated": tc_count_generated,
+                "reviewer_verdict": verdict,
+                "reviewer_score": rev_score,
+                "optimizer_added": added_count,
+                "total_elapsed_s": round(t_gen + t_rev + t_opt, 2),
+            },
+        )
+        tracer.log_pipeline_feedback(pipeline_s, {
+            "reviewer_score":        (rev_score, "quality", f"Veredicto: {verdict}"),
+            "coverage_pct":          (min(1.0, coverage_pct), "generation"),
+            "tc_completeness":       (min(1.0, tc_count_generated / max(1, req.tc_count)), "generation"),
+            "optimization_coverage": (min(1.0, added_count / 3) if added_count else 0.0, "generation"),
+        })
+
     generate_resp = _build_response(parsed_data, req.user_story)
     put_event({
         "event": "done",
         "data": {
             **generate_resp.model_dump(),
             "agent_trace": [
-                {"agent": "Generador",   "elapsed_s": t_gen, "summary": f"{len(parsed_data.get('test_cases', []))} casos generados"},
-                {"agent": "Revisor",     "elapsed_s": t_rev, "summary": f"Veredicto: {review.get('verdict', '?')} | Score: {review.get('score', 0):.2f}"},
-                {"agent": "Optimizador", "elapsed_s": t_opt, "summary": f"{len(optimizer_result.get('added_cases', []))} casos optimizados"},
+                {"agent": "Generador",   "elapsed_s": t_gen, "summary": f"{tc_count_generated} casos generados"},
+                {"agent": "Revisor",     "elapsed_s": t_rev, "summary": f"Veredicto: {verdict} | Score: {rev_score:.2f}"},
+                {"agent": "Optimizador", "elapsed_s": t_opt, "summary": f"{added_count} casos optimizados"},
             ],
             "used_fallback": False,
             "optimizer_output": optimizer_result,
@@ -340,7 +566,7 @@ def _run_crew_streaming(req: AgentGenerateRequest, rag_context: str, put_event) 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Función principal (async)
+# Async entry points (called from generate routes within root_trace)
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def run_agent_pipeline(
@@ -348,42 +574,27 @@ async def run_agent_pipeline(
     rag_context: str = "",
 ) -> AgentGenerateResponse:
     """
-    Ejecuta el pipeline de 3 agentes CrewAI de forma asíncrona.
-    Hace fallback a generate_test_cases si CrewAI falla.
+    Executes the 3-agent CrewAI pipeline asynchronously.
+    Trace context propagates to the thread executor (Python 3.7+).
+    Falls back to generate_test_cases() if CrewAI fails.
     """
-    opik_trace = None
-    if _OPIK_ENABLED:
-        try:
-            _client = opik.Opik()
-            opik_trace = _client.trace(
-                name="agent_pipeline",
-                input={
-                    "user_story": req.user_story[:300],
-                    "model": req.model,
-                    "use_rag": bool(rag_context),
-                },
-                project_name=OPIK_PROJECT_NAME,
-            )
-        except Exception:
-            pass
-
     try:
-        # Correr CrewAI en executor para no bloquear el event loop
         loop = asyncio.get_running_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(_executor, lambda: _run_crew(req, rag_context)),
             timeout=300.0,
         )
 
-        parsed_data     = result["parsed_data"]
-        agent_trace     = result["agent_trace"]
-        review          = result["review"]
+        parsed_data      = result["parsed_data"]
+        agent_trace      = result["agent_trace"]
+        review           = result["review"]
         optimizer_result = result.get("optimizer_result", {})
-        used_fallback   = result["used_fallback"]
+        used_fallback    = result["used_fallback"]
 
     except Exception as exc:
         logger.error("CrewAI falló, usando fallback directo | %s", exc)
-        # Fallback: generar directamente con llm_service
+        tracer.record_error(exc, component="crewai", pipeline="generate_agents")
+
         from backend.schemas.models import GenerateRequest
         from backend.services.llm_service import generate_test_cases
 
@@ -396,23 +607,12 @@ async def run_agent_pipeline(
         fallback_resp = await generate_test_cases(fallback_req)
         parsed_data = fallback_resp.model_dump()
         agent_trace = [
-            AgentTrace(agent="Fallback (sin agentes)", elapsed_s=0.0, summary=f"Error CrewAI: {str(exc)[:80]}")
+            AgentTrace(agent="Fallback (sin agentes)", elapsed_s=0.0,
+                       summary=f"Error CrewAI: {str(exc)[:80]}")
         ]
         review = {}
         optimizer_result = {}
         used_fallback = True
-
-    # Cerrar traza Opik
-    if opik_trace:
-        try:
-            review_summary = review.get("verdict", "N/A") if review else "fallback"
-            opik_trace.end(output={
-                "tc_count": len(parsed_data.get("test_cases", [])),
-                "review_verdict": review_summary,
-                "used_fallback": used_fallback,
-            })
-        except Exception:
-            pass
 
     generate_resp = _build_response(parsed_data, req.user_story)
 
@@ -433,9 +633,8 @@ async def stream_agent_pipeline(
     rag_context: str = "",
 ):
     """
-    Async generator SSE. Emite un evento tras cada agente:
-      agent_start → agent_done (con datos parciales) → done (respuesta completa)
-    El frontend puede renderizar los test cases en cuanto el Generador termina.
+    Async generator SSE. Emits one event per agent.
+    Trace context propagates to the thread executor.
     """
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -448,6 +647,7 @@ async def stream_agent_pipeline(
             _run_crew_streaming(req, rag_context, put_event)
         except Exception as exc:
             logger.error("Error en pipeline streaming: %s", exc)
+            tracer.record_error(exc, component="crewai", pipeline="generate_agents_stream")
             put_event({"event": "error", "message": str(exc)})
 
     loop.run_in_executor(_executor, _run)
