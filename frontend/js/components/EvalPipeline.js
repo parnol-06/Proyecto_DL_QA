@@ -48,8 +48,8 @@ const EvalPipeline = (() => {
     // whenever result is undefined (idle / running states).
     const _scoreStr = result?.score != null ? result.score.toFixed(2) : '—';
     const badge = {
-      idle:    `<span class="ep-badge ep-b-idle">PENDIENTE</span>`,
-      running: `<span class="ep-badge ep-b-running">EVALUANDO</span>`,
+      idle:    `<span class="ep-badge ep-b-idle">PENDING</span>`,
+      running: `<span class="ep-badge ep-b-running">EVALUATING</span>`,
       pass:    `<span class="ep-badge ep-b-pass">PASS · ${_scoreStr}</span>`,
       warn:    `<span class="ep-badge ep-b-warn">WARN · ${_scoreStr}</span>`,
     }[st];
@@ -94,15 +94,15 @@ const EvalPipeline = (() => {
     const total = EVAL_STEPS.length;
 
     const subtitle =
-      _state === 'idle'    ? 'Presiona <strong>Evaluar con DeepEval</strong> para analizar la calidad de los casos generados.'
-      : _state === 'running' ? `Evaluando… <strong>${done} de ${total}</strong> métricas completadas`
+      _state === 'idle'    ? 'Press <strong>Evaluate with DeepEval</strong> to analyse the quality of the generated cases.'
+      : _state === 'running' ? `Evaluating… <strong>${done} of ${total}</strong> metrics completed`
       : '';
 
     el.innerHTML = `
       <div class="ep-hdr">
         <div class="ep-title-row">
           <span class="ep-title">◈  Pipeline DeepEval</span>
-          <span class="ep-tag">5 métricas · Ollama local</span>
+          <span class="ep-tag">5 metrics · Local Ollama</span>
           ${_state === 'running' ? '<span class="ep-live-clock" id="ep-clock">0s</span>' : ''}
         </div>
         ${subtitle ? `<p class="ep-subtitle">${subtitle}</p>` : ''}

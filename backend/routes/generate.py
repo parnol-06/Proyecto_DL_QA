@@ -22,13 +22,13 @@ POST /generate/agents
 │   ├── embedding_generation
 │   └── chromadb_query
 ├── crew_pipeline
-│   ├── agent_1_generador
-│   │   ├── llm_call_generador
+│   ├── agent_generator
+│   │   ├── llm_call_generator
 │   │   └── llm_json_parse
-│   ├── agent_2_revisor
-│   │   └── llm_call_revisor
-│   └── agent_3_optimizador
-│       └── llm_call_optimizador
+│   ├── agent_reviewer
+│   │   └── llm_call_reviewer
+│   └── agent_optimizer
+│       └── llm_call_optimizer
 └── response_serialization
 
 POST /generate/stream  (same structure, ends with response_stream)
@@ -138,10 +138,10 @@ async def generate(req: GenerateRequest):
                 },
             )
             tracer.log_pipeline_feedback(t, {
-                "coverage_pct":    (coverage_pct / 100.0, "generation", f"{coverage_pct:.1f}% cobertura de categorías"),
-                "tc_completeness": (tc_completeness, "generation", f"{tc_count_actual}/{req.tc_count} casos generados"),
-                "output_validity": (output_validity, "quality", "JSON con test cases válidos"),
-                "rag_enabled":     (1.0 if req.use_rag else 0.0, "context", "RAG habilitado"),
+                "coverage_pct":    (coverage_pct / 100.0, "generation", f"{coverage_pct:.1f}% category coverage"),
+                "tc_completeness": (tc_completeness, "generation", f"{tc_count_actual}/{req.tc_count} cases generated"),
+                "output_validity": (output_validity, "quality", "JSON with valid test cases"),
+                "rag_enabled":     (1.0 if req.use_rag else 0.0, "context", "RAG enabled"),
             })
 
             generation_trace_id = tracer.get_trace_id()
@@ -149,16 +149,16 @@ async def generate(req: GenerateRequest):
             return result
 
         except ollama.ResponseError as e:
-            logger.error("Error Ollama | %s", str(e))
+            logger.error("Ollama error | %s", str(e))
             tracer.record_error(e, target=t, component="ollama", pipeline="generate_normal")
-            raise HTTPException(status_code=503, detail=f"Error de Ollama: {str(e)}")
+            raise HTTPException(status_code=503, detail=f"Ollama error: {str(e)}")
         except ValueError as e:
             tracer.record_error(e, target=t, component="validator", pipeline="generate_normal")
             raise HTTPException(status_code=422, detail=str(e))
         except Exception as e:
-            logger.error("Error interno en /generate | %s", str(e))
+            logger.error("Internal error in /generate | %s", str(e))
             tracer.record_error(e, target=t, component="generate", pipeline="generate_normal")
-            raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ async def generate_agents_stream(req: AgentGenerateRequest):
                             metadata={"docs_retrieved": "3" if rag_context else "0"},
                         )
                 except Exception as exc:
-                    logger.warning("RAG no disponible en /generate/agents/stream: %s", exc)
+                    logger.warning("RAG unavailable in /generate/agents/stream: %s", exc)
 
             tracer.update_span(t, metadata={"rag_context_chars": len(rag_context)})
 
@@ -289,7 +289,7 @@ async def generate_agents_stream(req: AgentGenerateRequest):
                         chunks_emitted += 1
                         yield chunk
                 except Exception as e:
-                    logger.error("Error en pipeline streaming | %s", str(e))
+                    logger.error("Streaming pipeline error | %s", str(e))
                     tracer.record_error(e, target=t, component="crewai", pipeline="generate_agents_stream")
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
@@ -306,7 +306,7 @@ async def generate_agents_stream(req: AgentGenerateRequest):
                     "context",
                     "RAG context retrieved" if rag_context else "RAG not used",
                 ),
-                "stream_completion": (1.0, "quality", f"{chunks_emitted} chunks emitidos"),
+                "stream_completion": (1.0, "quality", f"{chunks_emitted} chunks emitted"),
             })
 
     return StreamingResponse(
@@ -322,7 +322,7 @@ async def generate_agents_stream(req: AgentGenerateRequest):
 
 @router.post("/generate/agents", response_model=AgentGenerateResponse)
 async def generate_agents(req: AgentGenerateRequest):
-    """Pipeline de 3 agentes CrewAI: Generador + Revisor + Optimizador."""
+    """3-agent CrewAI pipeline: Generator + Reviewer + Optimizer."""
     with tracer.root_trace(
         "generate_agents_request",
         input_data={
@@ -362,7 +362,7 @@ async def generate_agents(req: AgentGenerateRequest):
                             metadata={"docs_retrieved": "3" if rag_context else "0"},
                         )
                 except Exception as exc:
-                    logger.warning("RAG no disponible en /generate/agents: %s", exc)
+                    logger.warning("RAG unavailable in /generate/agents: %s", exc)
 
             result = await run_agent_pipeline(req, rag_context)
 
@@ -394,10 +394,10 @@ async def generate_agents(req: AgentGenerateRequest):
                 },
             )
             tracer.log_pipeline_feedback(t, {
-                "coverage_pct":    (coverage_pct / 100.0, "generation", f"{coverage_pct:.1f}% cobertura"),
-                "tc_completeness": (tc_completeness, "generation", f"{tc_count_actual}/{req.tc_count} casos"),
+                "coverage_pct":    (coverage_pct / 100.0, "generation", f"{coverage_pct:.1f}% coverage"),
+                "tc_completeness": (tc_completeness, "generation", f"{tc_count_actual}/{req.tc_count} cases"),
                 "pipeline_quality": (0.0 if result.used_fallback else 1.0, "quality",
-                                     "Fallback activo" if result.used_fallback else "Pipeline completo"),
+                                     "Fallback active" if result.used_fallback else "Full pipeline"),
                 "rag_context_quality": (1.0 if rag_context else 0.5, "context",
                                         "RAG context available" if rag_context else "No RAG context"),
             })
@@ -407,11 +407,11 @@ async def generate_agents(req: AgentGenerateRequest):
 
         except ollama.ResponseError as e:
             tracer.record_error(e, target=t, component="ollama", pipeline="generate_agents")
-            raise HTTPException(status_code=503, detail=f"Error de Ollama: {str(e)}")
+            raise HTTPException(status_code=503, detail=f"Ollama error: {str(e)}")
         except Exception as e:
-            logger.error("Error en pipeline de agentes | %s", str(e))
+            logger.error("Agent pipeline error | %s", str(e))
             tracer.record_error(e, target=t, component="crewai", pipeline="generate_agents")
-            raise HTTPException(status_code=500, detail=f"Error en agentes: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Agent pipeline error: {str(e)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -420,17 +420,17 @@ async def generate_agents(req: AgentGenerateRequest):
 
 @router.post("/regenerate-tc")
 async def regenerate_tc(req: RegenerateTCRequest):
-    """Regenera un único caso de prueba conservando su ID y categoría."""
+    """Regenerates a single test case preserving its ID and category."""
     cat_hint = (
-        f" Genera exactamente 1 caso de prueba de categoría '{req.category}'."
-        if req.category else " Genera exactamente 1 caso de prueba."
+        f" Generate exactly 1 test case of category '{req.category}'."
+        if req.category else " Generate exactly 1 test case."
     )
     prompt = (
-        f"Historia de usuario:\n{req.user_story}\n\n"
-        f"Contexto: {req.context or 'Ninguno'}\n\n"
-        f"INSTRUCCIÓN:{cat_hint} Mantén el ID {req.tc_id}. "
-        "Responde SOLO con el objeto JSON del caso:\n"
-        '{"id":"...","title":"...","category":"...","priority":"alto|medio|bajo",'
+        f"User story:\n{req.user_story}\n\n"
+        f"Context: {req.context or 'None'}\n\n"
+        f"INSTRUCTION:{cat_hint} Keep the ID {req.tc_id}. "
+        "Respond ONLY with the JSON object of the case:\n"
+        '{"id":"...","title":"...","category":"...","priority":"high|medium|low",'
         '"preconditions":["..."],"steps":["..."],"expected_result":"...","test_type":"..."}'
     )
     with tracer.root_trace(
@@ -461,7 +461,7 @@ async def regenerate_tc(req: RegenerateTCRequest):
 
             raw_json = find_first_json_object(content)
             if not raw_json:
-                raise ValueError("El modelo no devolvió un JSON válido")
+                raise ValueError("Model did not return a valid JSON response")
             tc = json.loads(raw_json)
             tc["id"] = req.tc_id
 
@@ -481,13 +481,13 @@ async def regenerate_tc(req: RegenerateTCRequest):
 async def pull_model(body: dict):
     model = body.get("model", "").strip()
     if not model:
-        raise HTTPException(status_code=422, detail="Nombre de modelo requerido")
+        raise HTTPException(status_code=422, detail="Model name required")
     try:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: _ollama.pull(model))
         return {"status": "ok", "model": model}
     except ollama.ResponseError as e:
-        raise HTTPException(status_code=503, detail=f"Error descargando modelo: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Error downloading model: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -539,7 +539,7 @@ async def health():
 
 
 @router.get("/model-status")
-async def model_status(model: str = Query(..., description="Nombre del modelo")):
+async def model_status(model: str = Query(..., description="Model name")):
     try:
         available = _extract_model_names(_ollama.list())
         loaded = any(name.startswith(model) or model.startswith(name.split(":")[0]) for name in available)

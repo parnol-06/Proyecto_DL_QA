@@ -2,38 +2,38 @@
 
 OLLAMA_BASE=${OLLAMA_HOST:-http://localhost:11434}
 
-# ── Esperar a Ollama (máximo 120 segundos) ───────────────────────────────────
-echo "[entrypoint] Esperando a Ollama en $OLLAMA_BASE ..."
+# ── Wait for Ollama (up to 120 seconds) ──────────────────────────────────────
+echo "[entrypoint] Waiting for Ollama at $OLLAMA_BASE ..."
 MAX_WAIT=120
 WAITED=0
 until curl -sf "$OLLAMA_BASE/api/tags" > /dev/null 2>&1; do
   if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-    echo "[entrypoint] ERROR: Ollama no respondió en ${MAX_WAIT}s. Abortando." >&2
+    echo "[entrypoint] ERROR: Ollama did not respond within ${MAX_WAIT}s. Aborting." >&2
     exit 1
   fi
   sleep 3
   WAITED=$((WAITED + 3))
 done
-echo "[entrypoint] Ollama disponible."
+echo "[entrypoint] Ollama is available."
 
-# ── Descargar nomic-embed-text (requerido para indexación RAG) ────────────────
+# ── Download nomic-embed-text (required for RAG indexing) ────────────────────
 EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 TAGS=$(curl -sf "$OLLAMA_BASE/api/tags" 2>/dev/null || echo "{}")
 if echo "$TAGS" | grep -q "\"${EMBED_MODEL}\""; then
-  echo "[entrypoint] Modelo de embeddings '$EMBED_MODEL' ya disponible."
+  echo "[entrypoint] Embedding model '$EMBED_MODEL' already available."
 else
-  echo "[entrypoint] Descargando modelo de embeddings '$EMBED_MODEL' ..."
+  echo "[entrypoint] Downloading embedding model '$EMBED_MODEL' ..."
   if curl -sf -X POST "$OLLAMA_BASE/api/pull" \
       -H 'Content-Type: application/json' \
       -d "{\"name\": \"${EMBED_MODEL}\"}" > /dev/null 2>&1; then
-    echo "[entrypoint] Modelo '$EMBED_MODEL' descargado."
+    echo "[entrypoint] Model '$EMBED_MODEL' downloaded."
   else
-    echo "[entrypoint] ADVERTENCIA: no se pudo descargar '$EMBED_MODEL'. El RAG no estará disponible."
+    echo "[entrypoint] WARNING: could not download '$EMBED_MODEL'. RAG will not be available."
   fi
 fi
 
-# ── Mostrar modelos LLM disponibles (sin descargar nada) ─────────────────────
-echo "[entrypoint] Modelos LLM disponibles en Ollama:"
+# ── List available LLM models (no downloads) ─────────────────────────────────
+echo "[entrypoint] Available LLM models in Ollama:"
 curl -sf "$OLLAMA_BASE/api/tags" 2>/dev/null \
   | python3 -c "
 import sys, json
@@ -43,12 +43,12 @@ if models:
     for m in models:
         print(f'  - {m}')
 else:
-    print('  (ninguno — descarga un modelo con: ollama pull <nombre>)')
-" 2>/dev/null || echo "  (no se pudo leer la lista de modelos)"
+    print('  (none — download a model with: ollama pull <name>)')
+" 2>/dev/null || echo "  (could not read model list)"
 
-# ── Configurar Opik ───────────────────────────────────────────────────────────
+# ── Configure Opik ────────────────────────────────────────────────────────────
 if [ -n "$OPIK_API_KEY" ]; then
-  echo "[entrypoint] Configurando Opik (workspace=$OPIK_WORKSPACE, proyecto=$OPIK_PROJECT_NAME)..."
+  echo "[entrypoint] Configuring Opik (workspace=$OPIK_WORKSPACE, project=$OPIK_PROJECT_NAME)..."
   python -c "
 import opik, os
 opik.configure(
@@ -56,24 +56,24 @@ opik.configure(
     workspace=os.environ.get('OPIK_WORKSPACE') or None,
     force=True,
 )
-print('[entrypoint] Opik configurado correctamente.')
-" || echo "[entrypoint] Advertencia: Opik no pudo configurarse (continuando sin trazas)."
+print('[entrypoint] Opik configured successfully.')
+" || echo "[entrypoint] Warning: Opik could not be configured (continuing without traces)."
 fi
 
-# ── Construir índice RAG si no existe ─────────────────────────────────────────
-echo "[entrypoint] Verificando índice RAG..."
+# ── Build RAG index if it does not exist ─────────────────────────────────────
+echo "[entrypoint] Checking RAG index..."
 python -c "
 import sys, os
 sys.path.insert(0, '/app')
 from backend.services.rag_service import is_index_built, build_index
 if not is_index_built():
-    print('[entrypoint] Construyendo índice RAG desde corpus/...')
+    print('[entrypoint] Building RAG index from corpus/...')
     n = build_index()
-    print(f'[entrypoint] Índice construido: {n} chunks.')
+    print(f'[entrypoint] Index built: {n} chunks.')
 else:
-    print('[entrypoint] Índice RAG ya existe.')
-" || echo "[entrypoint] Advertencia: no se pudo construir el índice RAG."
+    print('[entrypoint] RAG index already exists.')
+" || echo "[entrypoint] Warning: could not build RAG index."
 
-# ── Iniciar servidor ──────────────────────────────────────────────────────────
-echo "[entrypoint] Iniciando servidor FastAPI en :8000 ..."
+# ── Start server ──────────────────────────────────────────────────────────────
+echo "[entrypoint] Starting FastAPI server on :8000 ..."
 exec uvicorn backend.main:app --host 0.0.0.0 --port 8000

@@ -1,6 +1,6 @@
 """
-RAG Service — Recuperación de contexto desde corpus de buenas prácticas QA.
-Usa ChromaDB como vector store y nomic-embed-text (Ollama) para embeddings.
+RAG Service — Context retrieval from QA best-practices corpus.
+Uses ChromaDB as vector store and nomic-embed-text (Ollama) for embeddings.
 """
 
 import asyncio
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 _ollama = ollama.Client(host=OLLAMA_HOST)
 
-# ── Rutas ─────────────────────────────────────────────────────────────────────
+# ── Paths ─────────────────────────────────────────────────────────────────────
 _BASE_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 CHROMA_PATH  = os.path.join(_BASE_DIR, "chroma_db")
 CORPUS_DIR   = os.path.join(_BASE_DIR, "corpus")
@@ -31,7 +31,7 @@ CHUNK_OVERLAP = 50
 # ── Embedding ─────────────────────────────────────────────────────────────────
 
 def _embed(text: str) -> list[float]:
-    """Genera embedding con nomic-embed-text via Ollama. Traced via embed_span."""
+    """Generates embedding with nomic-embed-text via Ollama. Traced via embed_span."""
     with tracer.embed_span(text[:200]) as s:
         t0 = time.monotonic()
         response = _ollama.embed(model=EMBED_MODEL, input=text)
@@ -53,7 +53,7 @@ def _get_collection() -> chromadb.Collection:
 # ── Chunking ──────────────────────────────────────────────────────────────────
 
 def _chunk_text(text: str) -> list[str]:
-    """Divide texto en chunks con solapamiento."""
+    """Splits text into overlapping chunks."""
     chunks, start = [], 0
     while start < len(text):
         end = min(start + CHUNK_SIZE, len(text))
@@ -67,8 +67,8 @@ def _chunk_text(text: str) -> list[str]:
 @tracer.track("rag_build_index")
 def build_index(corpus_dir: str = CORPUS_DIR) -> int:
     """
-    Lee .md y .txt de corpus_dir, genera embeddings y guarda en ChromaDB.
-    Retorna el número de chunks indexados.
+    Reads .md and .txt files from corpus_dir, generates embeddings and saves to ChromaDB.
+    Returns the number of indexed chunks.
     """
     with tracer.child_span(
         "chromadb_build_index",
@@ -81,7 +81,7 @@ def build_index(corpus_dir: str = CORPUS_DIR) -> int:
         existing = collection.count()
         if existing > 0:
             collection.delete(where={"source": {"$ne": ""}})
-            logger.info("Colección limpiada | chunks previos=%d", existing)
+            logger.info("Collection cleared | previous_chunks=%d", existing)
 
         extensions = (".md", ".txt")
         total_chunks = 0
@@ -94,7 +94,7 @@ def build_index(corpus_dir: str = CORPUS_DIR) -> int:
                 text = f.read()
 
             chunks = _chunk_text(text)
-            logger.info("Indexando %s | chunks=%d", fname, len(chunks))
+            logger.info("Indexing %s | chunks=%d", fname, len(chunks))
 
             for i, chunk in enumerate(chunks):
                 try:
@@ -110,7 +110,7 @@ def build_index(corpus_dir: str = CORPUS_DIR) -> int:
                 except Exception as exc:
                     logger.warning("Error indexando chunk %d de %s: %s", i, fname, exc)
 
-        logger.info("Índice construido | total_chunks=%d", total_chunks)
+        logger.info("Index built | total_chunks=%d", total_chunks)
         tracer.update_span(
             s,
             output={"total_chunks_indexed": total_chunks},
@@ -123,14 +123,14 @@ def build_index(corpus_dir: str = CORPUS_DIR) -> int:
 
 def semantic_search(query: str, k: int = 3) -> str:
     """
-    Busca los k chunks más relevantes para la query.
-    Retorna texto concatenado o "" si no hay índice o falla.
+    Searches the k most relevant chunks for the query.
+    Returns concatenated text or "" if no index exists or search fails.
     Creates child spans for embed + query phases.
     """
     try:
         collection = _get_collection()
         if collection.count() == 0:
-            logger.debug("Vector store vacío — RAG deshabilitado")
+            logger.debug("Vector store empty — RAG disabled")
             return ""
 
         # Embedding span is created inside _embed()
@@ -170,7 +170,7 @@ def semantic_search(query: str, k: int = 3) -> str:
                 metadata={"query_time_ms": query_ms},
             )
             logger.info(
-                "RAG: %d fragmentos recuperados",
+                "RAG: %d fragments retrieved",
                 len(docs),
                 extra={
                     "docs_found": len(docs),
@@ -182,12 +182,12 @@ def semantic_search(query: str, k: int = 3) -> str:
             return context
 
     except Exception as exc:
-        logger.warning("RAG semantic_search falló: %s", exc)
+        logger.warning("RAG semantic_search failed: %s", exc)
         return ""
 
 
 def is_index_built() -> bool:
-    """True si la colección tiene al menos 1 documento."""
+    """True if the collection has at least 1 document."""
     try:
         return _get_collection().count() > 0
     except Exception:
@@ -195,6 +195,6 @@ def is_index_built() -> bool:
 
 
 async def async_semantic_search(query: str, k: int = 3) -> str:
-    """Versión async-safe de semantic_search: ejecuta en thread executor."""
+    """Async-safe version of semantic_search: runs in thread executor."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, semantic_search, query, k)

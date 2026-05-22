@@ -3,9 +3,9 @@
 
 const AgentPipeline = (() => {
   const _AGENTS = [
-    { name: 'Generador',   key: 'generator' },
-    { name: 'Revisor',     key: 'reviewer'  },
-    { name: 'Optimizador', key: 'optimizer' },
+    { name: 'Generator', key: 'generator' },
+    { name: 'Reviewer',  key: 'reviewer'  },
+    { name: 'Optimizer', key: 'optimizer' },
   ];
 
   const _startMs = {};
@@ -51,7 +51,7 @@ const AgentPipeline = (() => {
       const node = _node(key);
       if (!node) return;
       node.dataset.state = 'idle';
-      _setText(node, '.ap-node-message', 'En espera...');
+      _setText(node, '.ap-node-message', 'Waiting...');
       _setText(node, '.ap-node-elapsed', '');
       _setText(node, '.ap-node-stats', '');
       _show(node, '.ap-node-progress', false);
@@ -101,7 +101,7 @@ const AgentPipeline = (() => {
       : Math.min(55, elapsed * 1.8);
     _fill(node, pct);
 
-    const casesTxt = casesFound > 0 ? `${casesFound} casos · ` : '';
+    const casesTxt = casesFound > 0 ? `${casesFound} cases · ` : '';
     _setText(node, '.ap-node-stats', `${casesTxt}${elapsed}s`);
   }
 
@@ -112,7 +112,7 @@ const AgentPipeline = (() => {
     if (!node) return;
 
     node.dataset.state = 'done';
-    _setText(node, '.ap-node-message', summary || 'Completado');
+    _setText(node, '.ap-node-message', summary || 'Completed');
     _setText(node, '.ap-node-elapsed', `${elapsedS}s`);
     _show(node, '.ap-node-progress', true);
     _fill(node, 100);
@@ -129,7 +129,7 @@ const AgentPipeline = (() => {
     const node = _node(cfg.key);
     if (!node) return;
     node.dataset.state = 'error';
-    _setText(node, '.ap-node-message', msg || 'Error en el agente');
+    _setText(node, '.ap-node-message', msg || 'Agent error');
     _stopTick();
   }
 
@@ -146,9 +146,9 @@ const AgentPipeline = (() => {
     if (!detailsEl) return;
 
     const VCLASS = {
-      'APROBADO':  'ap-v-pass',
-      'RECHAZADO': 'ap-v-fail',
-      'MODIFICADO':'ap-v-mod',
+      'APPROVED': 'ap-v-pass',
+      'REJECTED': 'ap-v-fail',
+      'MODIFIED': 'ap-v-mod',
     };
 
     detailsEl.innerHTML = decisions.slice(0, 6).map(d => `
@@ -165,7 +165,7 @@ const AgentPipeline = (() => {
         detailsEl.style.display = isOpen ? 'none' : 'block';
         const lbl = btn.querySelector('.ap-expand-label');
         const arr = btn.querySelector('.ap-expand-arrow');
-        if (lbl) lbl.textContent = isOpen ? 'Ver decisiones' : 'Ocultar';
+        if (lbl) lbl.textContent = isOpen ? 'Show decisions' : 'Hide';
         if (arr) arr.textContent = isOpen ? '▾' : '▴';
       };
     }
@@ -175,10 +175,10 @@ const AgentPipeline = (() => {
 
   function _runMsg(name) {
     return ({
-      'Generador':   'Generando casos de prueba desde la historia...',
-      'Revisor':     'Analizando calidad y coherencia de los casos...',
-      'Optimizador': 'Optimizando cobertura e identificando brechas críticas...',
-    })[name] || 'Procesando...';
+      'Generator': 'Generating test cases from the user story...',
+      'Reviewer':  'Analysing quality and consistency of the cases...',
+      'Optimizer': 'Optimising coverage and identifying critical gaps...',
+    })[name] || 'Processing...';
   }
 
   function _startTick() {

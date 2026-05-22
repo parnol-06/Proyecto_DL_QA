@@ -364,8 +364,8 @@ function _showEvalTimerBar() {
   const label = document.getElementById('eval-timer-label');
   if (fill)  fill.style.width        = '0%';
   if (clock) clock.textContent       = '0s';
-  if (step)  step.textContent        = '0 / 5 métricas completadas';
-  if (label) label.textContent       = '⏱ Evaluando con DeepEval...';
+  if (step)  step.textContent        = '0 / 5 metrics completed';
+  if (label) label.textContent       = '⏱ Evaluating with DeepEval...';
 }
 
 function _hideEvalTimerBar() {
@@ -380,8 +380,8 @@ function _updateEvalTimerBar(elapsed, stepDone, total, metricName) {
   const label = document.getElementById('eval-timer-label');
   if (clock) clock.textContent = _fmtTime(elapsed);
   if (fill)  fill.style.width  = `${Math.round((stepDone / total) * 100)}%`;
-  if (step)  step.textContent  = `${stepDone} / ${total} métricas completadas`;
-  if (label && metricName) label.textContent = `⏱ Completada: ${metricName}`;
+  if (step)  step.textContent  = `${stepDone} / ${total} metrics completed`;
+  if (label && metricName) label.textContent = `⏱ Completed: ${metricName}`;
 }
 
 // ── Estimado de tiempo de evaluación DeepEval
@@ -394,7 +394,7 @@ function _showEvalTimeHint(elapsedSecs, tcCount) {
   const low  = Math.max(1, Math.floor((secsPerMetric * 5) / 60));
   const high = Math.ceil((secsPerMetric * 5 * 1.5) / 60);
   const range = low === high ? `~${low} min` : `~${low}–${high} min`;
-  hint.textContent = `⏱ Evaluación estimada: ${range} (5 métricas, ${tcCount} casos)`;
+  hint.textContent = `⏱ Estimated evaluation: ${range} (5 metrics, ${tcCount} cases)`;
   hint.style.display = 'block';
 }
 
@@ -490,7 +490,7 @@ async function generate() {
         setWorkflowStep('evaluate');
         const tcCount = (data.test_cases || []).length;
         const ragTag  = useRag ? ' · RAG' : '';
-        showToast(`${tcCount} casos generados en ${elapsed}s${ragTag}`);
+        showToast(`${tcCount} cases generated in ${elapsed}s${ragTag}`);
         _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
         EvalPipeline.setIdle();
@@ -578,7 +578,7 @@ async function generateAgents() {
         btnText.textContent = `${msg.agent} (${msg.step}/${msg.total})...`;
 
       } else if (msg.event === 'token') {
-        AgentPipeline.agentProgress(msg.agent || 'Generador', _streamCaseCount);
+        AgentPipeline.agentProgress(msg.agent || 'Generator', _streamCaseCount);
 
       } else if (msg.event === 'case') {
         if (!data) data = { test_cases: [], edge_scenarios: [], potential_bugs: [], coverage_summary: {}, raw_story: story };
@@ -587,25 +587,25 @@ async function generateAgents() {
         _streamCaseCount++;
         appendTC(msg.case);
         StreamMonitor.addCase(msg.case.id || `TC-${_streamCaseCount}`, msg.case.category || '');
-        AgentPipeline.agentProgress('Generador', _streamCaseCount);
+        AgentPipeline.agentProgress('Generator', _streamCaseCount);
 
       } else if (msg.event === 'agent_done') {
         agentTraces.push({ agent: msg.agent, elapsed_s: msg.elapsed_s, summary: msg.summary });
         AgentPipeline.agentDone(msg.agent, msg.step, msg.summary, msg.elapsed_s);
         StreamMonitor.agentDone(msg.agent, msg.elapsed_s, msg.summary);
 
-        if (msg.agent === 'Generador') {
+        if (msg.agent === 'Generator') {
           data = { ...(data || {}), ...msg.data, raw_story: story };
           localStorage.setItem('lastResult', JSON.stringify(data));
           showToast(
-            `${(msg.data?.test_cases || []).length} casos listos · Revisor analizando...`,
+            `${(msg.data?.test_cases || []).length} cases ready · Reviewer analysing...`,
             'var(--cyan)'
           );
         }
 
-        if (msg.agent === 'Revisor') {
+        if (msg.agent === 'Reviewer') {
           if (msg.decisions?.length) {
-            AgentPipeline.showDecisions('Revisor', msg.decisions);
+            AgentPipeline.showDecisions('Reviewer', msg.decisions);
             msg.decisions.forEach(d =>
               StreamMonitor.addDecision(d.tc_id || d.id, d.verdict, d.reason)
             );
@@ -636,28 +636,28 @@ async function generateAgents() {
           if (bar && !document.getElementById('fallbackBannerMain')) {
             bar.insertAdjacentHTML('afterbegin',
               `<div id="fallbackBannerMain" class="fallback-banner">
-                 ⚠ Modo Fallback — CrewAI no disponible, se usó generación directa
+                 ⚠ Fallback Mode — CrewAI unavailable, direct generation was used
                </div>`);
           }
         }
 
         const tcCount     = (data.test_cases || []).length;
         const fallbackTag = data.used_fallback ? ' (fallback)' : '';
-        showToast(`${tcCount} casos · ${elapsed}s${fallbackTag}`);
+        showToast(`${tcCount} cases · ${elapsed}s${fallbackTag}`);
         _showEvalTimeHint(elapsed, tcCount);
         document.getElementById('evaluateBtn').disabled = false;
         EvalPipeline.setIdle();
 
       } else if (msg.event === 'error') {
-        throw new Error(msg.message || 'Error en pipeline de agentes');
+        throw new Error(msg.message || 'Agent pipeline error');
       }
     }
 
   } catch (e) {
-    StreamMonitor.error('Generador', e.message);
+    StreamMonitor.error('Generator', e.message);
     StreamMonitor.hide();
-    AgentPipeline.agentError('Generador', e.message);
-    showToast('Error en agentes: ' + e.message, 'var(--red)');
+    AgentPipeline.agentError('Generator', e.message);
+    showToast('Agent error: ' + e.message, 'var(--red)');
     setWorkflowStep('input');
   } finally {
     clearInterval(_timerInterval);
@@ -677,18 +677,18 @@ function renderAgentTrace(traces, usedFallback, optimizerOutput = null) {
   container.style.display = 'block';
 
   const fallbackBanner = usedFallback
-    ? '<div class="fallback-banner" style="margin-bottom:12px">⚠ CrewAI falló — se usó generación directa como fallback</div>'
+    ? '<div class="fallback-banner" style="margin-bottom:12px">⚠ CrewAI failed — direct generation was used as fallback</div>'
     : '';
 
   const gapsHtml = optimizerOutput?.priority_gaps?.length
     ? `<div class="trace-section">
-        <div class="trace-section-label">Brechas Críticas Identificadas</div>
+        <div class="trace-section-label">Critical Gaps Identified</div>
         ${optimizerOutput.priority_gaps.map(g => `
           <div class="trace-gap">
             <span class="trace-gap-rank" style="background:${g.impact === 'alto' ? 'var(--red)' : 'var(--amber)'}">${g.rank}</span>
             <div>
               <div class="trace-gap-reason">${g.reason}</div>
-              <div class="trace-gap-meta">Categoría: ${g.category} · Impacto: ${g.impact}</div>
+              <div class="trace-gap-meta">Category: ${g.category} · Impact: ${g.impact}</div>
             </div>
           </div>`).join('')}
       </div>`
@@ -855,9 +855,9 @@ async function regenerateTC(cardIndex, tcId, category) {
     wrap.innerHTML = TCCard(test_case, cardIndex).trim();
     const newCard = wrap.firstElementChild;
     if (newCard && card) card.replaceWith(newCard);
-    showToast(`${tcId} regenerado`);
+    showToast(`${tcId} regenerated`);
   } catch (e) {
-    showToast('Error al regenerar: ' + e.message, 'var(--red)');
+    showToast('Regeneration error: ' + e.message, 'var(--red)');
     if (btn) { btn.textContent = '⟳'; btn.disabled = false; btn.style.opacity = ''; }
   }
 }
@@ -866,7 +866,7 @@ async function regenerateTC(cardIndex, tcId, category) {
 async function generateBatch() {
   const raw     = document.getElementById('userStory').value.trim();
   const stories = raw.split(/\n---+\n/).map(s => s.trim()).filter(s => s.length >= 20);
-  if (stories.length < 2) { showToast('Separa historias con "---" en línea propia', 'var(--amber)'); return; }
+  if (stories.length < 2) { showToast('Separate stories with "---" on its own line', 'var(--amber)'); return; }
 
   const btn     = document.getElementById('generateBtn');
   const spinner = document.getElementById('spinner');
@@ -925,7 +925,7 @@ async function generateBatch() {
   btn.disabled = false;
   spinner.style.display = 'none';
   btnText.textContent = 'Generar casos de prueba';
-  showToast(`Lote: ${merged.test_cases.length} TC de ${stories.length} historias`);
+  showToast(`Batch: ${merged.test_cases.length} TCs from ${stories.length} stories`);
 }
 
 // ── Fusionar casos del Optimizador de Cobertura
@@ -938,7 +938,7 @@ function mergeOptimizerCases(addedCases) {
   localStorage.setItem('lastResult', JSON.stringify(data));
   const cntEl = document.getElementById('cnt-tc');
   if (cntEl) cntEl.textContent = data.test_cases.length;
-  showToast(`+${addedCases.length} casos añadidos por el Optimizador`, 'var(--accent2)');
+  showToast(`+${addedCases.length} cases added by the Optimizer`, 'var(--accent2)');
 }
 
 // ── Init

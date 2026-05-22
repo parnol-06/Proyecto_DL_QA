@@ -4,15 +4,15 @@ from backend.config import OLLAMA_MODEL
 
 class GenerateRequest(BaseModel):
     user_story: str = Field(..., min_length=20, max_length=3000,
-                            description="Historia de usuario o requisito a testear")
+                            description="User story or requirement to test")
     model: str = OLLAMA_MODEL
     context: str = Field("", max_length=1000)
-    temperature: float = Field(0.25, ge=0.0, le=1.0, description="Temperatura del LLM (0.0–1.0)")
-    use_rag: bool = Field(False, description="Enriquecer el prompt con contexto del corpus QA")
-    categories: list[str] = Field(default_factory=list, description="Categorías a generar; vacío = todas")
-    tc_count: int = Field(10, ge=1, le=50, description="Cantidad de test cases a generar")
-    edge_count: int = Field(4, ge=0, le=20, description="Cantidad de edge scenarios a generar")
-    bug_count: int = Field(3, ge=0, le=20, description="Cantidad de bugs potenciales a generar")
+    temperature: float = Field(0.25, ge=0.0, le=1.0, description="LLM temperature (0.0–1.0)")
+    use_rag: bool = Field(False, description="Enrich the prompt with context from the QA corpus")
+    categories: list[str] = Field(default_factory=list, description="Categories to generate; empty = all")
+    tc_count: int = Field(10, ge=1, le=50, description="Number of test cases to generate")
+    edge_count: int = Field(4, ge=0, le=20, description="Number of edge scenarios to generate")
+    bug_count: int = Field(3, ge=0, le=20, description="Number of potential bugs to generate")
 
 
 class GenerateResponse(BaseModel):
@@ -21,7 +21,7 @@ class GenerateResponse(BaseModel):
     potential_bugs: list
     coverage_summary: dict
     raw_story: str
-    generation_trace_id: str = Field("", description="Opik trace_id — pásalo en EvaluateRequest.source_generation_trace_id")
+    generation_trace_id: str = Field("", description="Opik trace_id — pass it in EvaluateRequest.source_generation_trace_id")
 
 
 class AgentTrace(BaseModel):
@@ -51,7 +51,7 @@ class AgentGenerateResponse(BaseModel):
     agent_trace: list[AgentTrace]
     used_fallback: bool = False
     optimizer_output: dict = Field(default_factory=dict)
-    generation_trace_id: str = Field("", description="Opik trace_id — pásalo en EvaluateRequest.source_generation_trace_id")
+    generation_trace_id: str = Field("", description="Opik trace_id — pass it in EvaluateRequest.source_generation_trace_id")
 
 
 class RegenerateTCRequest(BaseModel):
@@ -67,10 +67,10 @@ class EvaluateRequest(BaseModel):
     requirement: str = Field(..., min_length=20, max_length=3000)
     generated_output: dict
     model: str = OLLAMA_MODEL
-    eval_model: str = Field("", description="Modelo para evaluación GEval (debe diferir del de generación para evitar sesgo)")
+    eval_model: str = Field("", description="Model for GEval evaluation (should differ from generation model to avoid bias)")
     source_generation_trace_id: str = Field(
         "",
-        description="Opik trace_id de la generación que produjo estos casos — habilita correlación Generate → Evaluate",
+        description="Opik trace_id of the generation that produced these cases — enables Generate → Evaluate correlation",
     )
 
 
@@ -82,4 +82,4 @@ class EvaluateResponse(BaseModel):
     nonfunctional_balance: float = 0.0
     overall: float
     model_used: str
-    evaluation_trace_id: str = Field("", description="Opik trace_id de esta evaluación")
+    evaluation_trace_id: str = Field("", description="Opik trace_id of this evaluation")

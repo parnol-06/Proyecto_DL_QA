@@ -5,9 +5,9 @@
 const StreamMonitor = (() => {
   const MAX_LOG = 30;
   const AGENTS = [
-    { name: 'Generador',   key: 'gen' },
-    { name: 'Revisor',     key: 'rev' },
-    { name: 'Optimizador', key: 'opt' },
+    { name: 'Generator', key: 'gen' },
+    { name: 'Reviewer',  key: 'rev' },
+    { name: 'Optimizer', key: 'opt' },
   ];
 
   let _log       = [];
@@ -38,42 +38,42 @@ const StreamMonitor = (() => {
     AGENTS.slice(0, AGENTS.indexOf(agent)).forEach(a => _setState(a.key, 'done'));
     _setState(agent.key, 'running');
     const cur = document.getElementById('sm-current');
-    if (cur) cur.textContent = `${agentName} · paso ${step}/${total}`;
+    if (cur) cur.textContent = `${agentName} · step ${step}/${total}`;
     _addLog(agentName, _runMsg(agentName), 'info');
   }
 
   function agentDone(agentName, elapsedS, summary) {
     const agent = AGENTS.find(a => a.name === agentName);
     if (agent) _setState(agent.key, 'done');
-    const shortSummary = (summary || 'Completado').slice(0, 90);
-    _addLog(agentName, `completado en ${elapsedS}s — ${shortSummary}`, 'done');
+    const shortSummary = (summary || 'Completed').slice(0, 90);
+    _addLog(agentName, `completed in ${elapsedS}s — ${shortSummary}`, 'done');
   }
 
   function addCase(tcId, category) {
-    _addLog('Generador', `${tcId} generado (${category || 'general'})`, 'case');
+    _addLog('Generator', `${tcId} generated (${category || 'general'})`, 'case');
   }
 
   function addDecision(tcId, verdict, reason) {
-    const type = verdict === 'APROBADO' ? 'pass' : verdict === 'RECHAZADO' ? 'fail' : 'mod';
+    const type = verdict === 'APPROVED' ? 'pass' : verdict === 'REJECTED' ? 'fail' : 'mod';
     const reasonStr = reason ? ' — ' + reason.slice(0, 55) : '';
-    _addLog('Revisor', `${tcId} ${verdict}${reasonStr}`, type);
+    _addLog('Reviewer', `${tcId} ${verdict}${reasonStr}`, type);
   }
 
   function addGap(gap) {
     const text = typeof gap === 'string' ? gap : (gap.reason || JSON.stringify(gap));
-    _addLog('Optimizador', `Brecha: ${text.slice(0, 70)}`, 'warn');
+    _addLog('Optimizer', `Gap: ${text.slice(0, 70)}`, 'warn');
   }
 
   function error(agentName, msg) {
     const agent = AGENTS.find(a => a.name === agentName);
     if (agent) _setState(agent.key, 'error');
-    _addLog(agentName || 'Pipeline', 'ERROR: ' + (msg || 'error desconocido'), 'error');
+    _addLog(agentName || 'Pipeline', 'ERROR: ' + (msg || 'unknown error'), 'error');
   }
 
   // ── Internals
 
   function _addLog(agent, text, type) {
-    const time = new Date().toLocaleTimeString('es', { hour12: false });
+    const time = new Date().toLocaleTimeString('en', { hour12: false });
     _log.push({ time, agent, text, type });
     if (_log.length > MAX_LOG) _log.shift();
     _renderLog();
@@ -98,10 +98,10 @@ const StreamMonitor = (() => {
 
   function _runMsg(name) {
     return ({
-      'Generador':   'Generando casos de prueba desde la historia de usuario...',
-      'Revisor':     'Analizando calidad y coherencia de los casos...',
-      'Optimizador': 'Optimizando cobertura e identificando brechas críticas...',
-    })[name] || 'Procesando...';
+      'Generator': 'Generating test cases from the user story...',
+      'Reviewer':  'Analysing quality and consistency of the cases...',
+      'Optimizer': 'Optimising coverage and identifying critical gaps...',
+    })[name] || 'Processing...';
   }
 
   function _startTimer() {

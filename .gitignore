@@ -1,3 +1,16 @@
+# ── Mockups ───────────────────────────────────────────────────────────────────────
+mockup/
+mockups/
+mockup/*.jpeg
+mockups/*.jpeg
+
+
+# ── dependencias ─────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
 # ── Entorno virtual ───────────────────────────────────────────────────────────
 .venv/
 venv/

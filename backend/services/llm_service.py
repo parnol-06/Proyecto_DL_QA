@@ -43,40 +43,40 @@ def _calc_num_predict(tc_count: int, edge_count: int, bug_count: int) -> int:
     return max(4096, tc_count * 280 + edge_count * 120 + bug_count * 160 + 1000)
 
 
-SYSTEM_PROMPT = """Eres un ingeniero QA senior EXPERTO con 15 años de experiencia. Tu trabajo es ser EXTREMADAMENTE DETALLISTA y minucioso.
+SYSTEM_PROMPT = """You are a senior QA engineer EXPERT with 15 years of experience. Your job is to be EXTREMELY DETAILED and thorough.
 
-INSTRUCCION OBLIGATORIA N°1: TODA TU RESPUESTA DEBE SER EXCLUSIVAMENTE EN IDIOMA ESPAÑOL. ABSOLUTAMENTE NADA EN INGLES.
-INSTRUCCION OBLIGATORIA N°2: DEBES GENERAR EXACTAMENTE LA CANTIDAD DE CASOS INDICADA EN EL PROMPT. NI MAS NI MENOS.
-INSTRUCCION OBLIGATORIA N°3: DEBES RESPETAR LA DISTRIBUCION POR CATEGORIA DEL PROMPT. EL CAMPO "category" DEBE COINCIDIR EXACTAMENTE CON LA CATEGORIA ASIGNADA.
-INSTRUCCION OBLIGATORIA N°4: CADA CASO DE PRUEBA DEBE TENER MINIMO 5 PASOS DETALLADOS.
-INSTRUCCION OBLIGATORIA N°5: NO GENERES SOLO CASOS FUNCIONALES BASICOS. DEBES CUBRIR TODOS LOS TIPOS DE PRUEBA INDICADOS.
-INSTRUCCION OBLIGATORIA N°6: CADA PASO DEBE SER ESPECIFICO, NO GENERICO.
-INSTRUCCION OBLIGATORIA N°7: LOS CASOS NO FUNCIONALES (RENDIMIENTO, SEGURIDAD, USABILIDAD) DEBEN TENER CONDICIONES Y RESULTADOS CUANTIFICABLES MEDIBLES. NO GENERICOS.
-INSTRUCCION OBLIGATORIA N°8: PARA CASOS DE RENDIMIENTO SIEMPRE ESPECIFICA TIEMPOS MAXIMOS, CARGA Y NUMERO DE USUARIOS CONCRETOS.
-INSTRUCCION OBLIGATORIA N°9: DIFERENCIA CLARAMENTE CASOS FUNCIONALES DE NO FUNCIONALES. NUNCA MEZCLALOS.
+MANDATORY INSTRUCTION #1: YOUR ENTIRE RESPONSE MUST BE EXCLUSIVELY IN ENGLISH. ABSOLUTELY NOTHING IN ANY OTHER LANGUAGE.
+MANDATORY INSTRUCTION #2: YOU MUST GENERATE EXACTLY THE NUMBER OF CASES SPECIFIED IN THE PROMPT. NO MORE, NO LESS.
+MANDATORY INSTRUCTION #3: YOU MUST FOLLOW THE CATEGORY DISTRIBUTION FROM THE PROMPT. THE "category" FIELD MUST MATCH EXACTLY THE ASSIGNED CATEGORY.
+MANDATORY INSTRUCTION #4: EACH TEST CASE MUST HAVE AT LEAST 5 DETAILED STEPS.
+MANDATORY INSTRUCTION #5: DO NOT GENERATE ONLY BASIC FUNCTIONAL CASES. YOU MUST COVER ALL INDICATED TEST TYPES.
+MANDATORY INSTRUCTION #6: EACH STEP MUST BE SPECIFIC, NOT GENERIC.
+MANDATORY INSTRUCTION #7: NON-FUNCTIONAL CASES (PERFORMANCE, SECURITY, USABILITY) MUST HAVE QUANTIFIABLE AND MEASURABLE CONDITIONS AND RESULTS. NOT GENERIC.
+MANDATORY INSTRUCTION #8: FOR PERFORMANCE CASES ALWAYS SPECIFY MAXIMUM TIMES, LOAD AND CONCRETE NUMBER OF USERS.
+MANDATORY INSTRUCTION #9: CLEARLY DIFFERENTIATE FUNCTIONAL FROM NON-FUNCTIONAL CASES. NEVER MIX THEM.
 
-Dada una historia de usuario o requisito, DEBES responder SOLAMENTE con un objeto JSON válido.
-Sin formato markdown, sin explicaciones, solo el JSON crudo.
+Given a user story or requirement, you MUST respond ONLY with a valid JSON object.
+No markdown formatting, no explanations, just the raw JSON.
 
-La estructura JSON debe ser:
+The JSON structure must be:
 {
   "test_cases": [
     {
       "id": "TC-001",
       "title": "string",
-      "category": "Camino Feliz | caso_limite | negativo | seguridad | rendimiento | usabilidad | compatibilidad",
-      "priority": "alto | medio | bajo",
+      "category": "happy_path | edge_case | negative | security | performance | usability | compatibility",
+      "priority": "high | medium | low",
       "preconditions": ["string"],
       "steps": ["string"],
       "expected_result": "string",
-      "test_type": "| No Funcional | funcional | integracion | ui | api | base_de_datos | rendimiento | seguridad"
+      "test_type": "functional | non_functional | integration | ui | api | database | performance | security"
     }
   ],
   "edge_scenarios": [
     {
       "id": "ES-001",
       "scenario": "string",
-      "risk_level": "alto | medio | bajo",
+      "risk_level": "high | medium | low",
       "description": "string"
     }
   ],
@@ -85,7 +85,7 @@ La estructura JSON debe ser:
       "id": "BUG-001",
       "title": "string",
       "area": "string",
-      "likelihood": "alto | medio | bajo",
+      "likelihood": "high | medium | low",
       "description": "string",
       "suggested_test": "string"
     }
@@ -109,12 +109,12 @@ def _distribute_categories(tc_count: int, categories: list) -> list[tuple[str, i
 
 def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
     rag_section = (
-        f"\n\nCONTEXTO DE BASE DE CONOCIMIENTO QA (usa esta información para enriquecer los casos):\n"
+        f"\n\nQA KNOWLEDGE BASE CONTEXT (use this information to enrich the test cases):\n"
         f"{rag_context}\n"
         if rag_context else ""
     )
     cats = getattr(req, "categories", [])
-    all_cats = ["happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"]
+    all_cats = ["happy_path", "edge_case", "negative", "security", "performance", "usability", "compatibility"]
     active_cats = cats if cats else all_cats
 
     tc_count   = getattr(req, "tc_count",   10)
@@ -122,31 +122,31 @@ def _build_prompt(req: GenerateRequest, rag_context: str = "") -> str:
     bug_count  = getattr(req, "bug_count",   3)
 
     dist = _distribute_categories(tc_count, active_cats)
-    dist_lines = "\n".join(f"  - {cat}: {count} caso{'s' if count != 1 else ''}" for cat, count in dist)
+    dist_lines = "\n".join(f"  - {cat}: {count} case{'s' if count != 1 else ''}" for cat, count in dist)
 
-    return f"""Historia de Usuario / Requisito:
+    return f"""User Story / Requirement:
 {req.user_story}
 
-Contexto adicional:
-{req.context if req.context else 'Ninguno'}
+Additional context:
+{req.context if req.context else 'None'}
 {rag_section}
-INSTRUCCION OBLIGATORIA: TODA LA RESPUESTA DEBE SER 100% EN IDIOMA ESPAÑOL.
+MANDATORY INSTRUCTION: THE ENTIRE RESPONSE MUST BE 100% IN ENGLISH.
 
-DISTRIBUCION EXACTA DE TEST CASES A GENERAR (total: {tc_count}):
+EXACT DISTRIBUTION OF TEST CASES TO GENERATE (total: {tc_count}):
 {dist_lines}
 
-REGLAS DE DISTRIBUCION:
-- Genera EXACTAMENTE {tc_count} test cases en total.
-- Genera EXACTAMENTE el número indicado para CADA categoría, ni uno más ni uno menos.
-- El campo "category" de cada caso DEBE ser exactamente uno de: {", ".join(active_cats)}
-- Genera los casos en el orden de la distribución: primero todos los de "{dist[0][0]}", luego los de la siguiente categoría, etc.
+DISTRIBUTION RULES:
+- Generate EXACTLY {tc_count} test cases in total.
+- Generate EXACTLY the indicated number for EACH category, no more, no less.
+- The "category" field of each case MUST be exactly one of: {", ".join(active_cats)}
+- Generate cases in distribution order: first all "{dist[0][0]}" cases, then the next category, etc.
 
-EDGE SCENARIOS: Genera EXACTAMENTE {edge_count} escenarios edge (array "edge_scenarios").
-BUGS POTENCIALES: Genera EXACTAMENTE {bug_count} bugs potenciales (array "potential_bugs").
+EDGE SCENARIOS: Generate EXACTLY {edge_count} edge scenarios (array "edge_scenarios").
+POTENTIAL BUGS: Generate EXACTLY {bug_count} potential bugs (array "potential_bugs").
 
-CADA CASO NO FUNCIONAL DEBE TENER VALORES NUMERICOS CONCRETOS Y MEDIBLES.
-CADA CASO DEBE TENER MINIMO 5 PASOS DETALLADOS Y ESPECIFICOS.
-Recuerda: responde SOLAMENTE con el objeto JSON crudo, sin ningun otro texto."""
+EACH NON-FUNCTIONAL CASE MUST HAVE CONCRETE AND MEASURABLE NUMERICAL VALUES.
+EACH CASE MUST HAVE AT MINIMUM 5 DETAILED AND SPECIFIC STEPS.
+Remember: respond ONLY with the raw JSON object, without any other text."""
 
 
 def _parse_llm_output(content: str) -> dict:
@@ -154,7 +154,7 @@ def _parse_llm_output(content: str) -> dict:
         json_match = re.search(r"\{[\s\S]*\}", content)
         if not json_match:
             tracer.update_span(s, output={"success": False, "reason": "no_json_found"})
-            raise ValueError("El modelo no devolvió un JSON válido")
+            raise ValueError("Model did not return a valid JSON response")
 
         raw = json_match.group()
         result: dict | None = None
@@ -180,7 +180,7 @@ def _parse_llm_output(content: str) -> dict:
                 result = json.loads(fixed)
             except json.JSONDecodeError as err:
                 tracer.update_span(s, output={"success": False, "reason": str(err)[:200]})
-                logger.error("JSON irreparable | error=%s | fragmento=%s", err, raw[:300])
+                logger.error("Irreparable JSON | error=%s | fragment=%s", err, raw[:300])
                 raise
 
         tracer.update_span(s, output={
@@ -196,7 +196,7 @@ def _build_response(data: dict, raw_story: str) -> GenerateResponse:
     test_cases = data.get("test_cases", [])
 
     covered_cats = list({tc.get("category") for tc in test_cases if tc.get("category")})
-    all_expected_cats = {"happy_path", "caso_limite", "negativo", "seguridad", "rendimiento", "usabilidad", "compatibilidad"}
+    all_expected_cats = {"happy_path", "edge_case", "negative", "security", "performance", "usability", "compatibility"}
     coverage_pct = round((len(covered_cats) / len(all_expected_cats)) * 100, 2) if all_expected_cats else 0
     missing_cats = list(all_expected_cats - set(covered_cats))
 
@@ -290,9 +290,9 @@ async def stream_generate_test_cases(req: GenerateRequest):
                     output={"context_chars": len(rag_context), "has_context": bool(rag_context)},
                 )
             if rag_context:
-                logger.info("RAG: contexto recuperado (%d chars)", len(rag_context))
+                logger.info("RAG: context retrieved (%d chars)", len(rag_context))
         except Exception as exc:
-            logger.warning("RAG no disponible: %s", exc)
+            logger.warning("RAG unavailable: %s", exc)
 
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -359,7 +359,7 @@ async def stream_generate_test_cases(req: GenerateRequest):
                 loop.call_soon_threadsafe(queue.put_nowait, {"error": str(exc)})
 
     async with _llm_semaphore:
-        logger.info("Iniciando streaming | modelo=%s | rag=%s", req.model, bool(rag_context))
+        logger.info("Starting stream | model=%s | rag=%s", req.model, bool(rag_context))
         loop.run_in_executor(None, _stream_sync)
 
         accumulated = ""
@@ -373,14 +373,14 @@ async def stream_generate_test_cases(req: GenerateRequest):
                 yield f"data: {json.dumps({'token': item['token']})}\n\n"
 
             elif "error" in item:
-                logger.error("Error en stream ollama: %s", item["error"])
+                logger.error("Ollama stream error: %s", item["error"])
                 yield f"data: {json.dumps({'error': item['error']})}\n\n"
                 break
 
             elif "done" in item:
                 accumulated = item["accumulated"]
                 elapsed = item["elapsed"]
-                logger.info("Stream completo | modelo=%s | tiempo=%.2fms | ttft=%.2fms",
+                logger.info("Stream complete | model=%s | time=%.2fms | ttft=%.2fms",
                             req.model, elapsed, item.get("ttft_ms", 0))
                 break
 
@@ -392,7 +392,7 @@ async def stream_generate_test_cases(req: GenerateRequest):
             yield f"data: {json.dumps({'case': tc})}\n\n"
         yield f"data: {json.dumps({'result': result_dict})}\n\n"
     except Exception as e:
-        logger.error("Error parseando stream | %s", str(e))
+        logger.error("Stream parse error | %s", str(e))
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
@@ -412,7 +412,7 @@ async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
                     output={"context_chars": len(rag_context), "has_context": bool(rag_context)},
                 )
         except Exception as exc:
-            logger.warning("RAG no disponible: %s", exc)
+            logger.warning("RAG unavailable: %s", exc)
 
     cats = getattr(req, "categories", []) or []
     with tracer.prompt_span(req.tc_count, cats, len(rag_context)) as ps:
@@ -432,7 +432,7 @@ async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
     options = {"temperature": req.temperature, "num_ctx": num_ctx, "top_p": 0.7, "num_predict": num_predict}
 
     async with _llm_semaphore:
-        logger.info("Iniciando generación | modelo=%s | rag=%s", req.model, bool(rag_context))
+        logger.info("Starting generation | model=%s | rag=%s", req.model, bool(rag_context))
         t0 = time.monotonic()
 
         loop = asyncio.get_running_loop()
@@ -441,7 +441,7 @@ async def generate_test_cases(req: GenerateRequest) -> GenerateResponse:
             lambda: _call_ollama_with_span(req.model, messages, options, prompt),
         )
 
-        logger.info("Respuesta recibida | modelo=%s | tiempo=%.2fs", req.model, time.monotonic() - t0)
+        logger.info("Response received | model=%s | time=%.2fs", req.model, time.monotonic() - t0)
 
     data = _parse_llm_output(content)
     return _build_response(data, req.user_story)

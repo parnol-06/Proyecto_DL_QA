@@ -52,7 +52,7 @@ async def run_evaluation(req: EvaluateRequest) -> EvaluateResponse:
     """
     if not _EVALUATOR_AVAILABLE:
         raise RuntimeError(
-            "DeepEval no está disponible. Verifica que deepeval esté instalado y configurado."
+            "DeepEval is not available. Verify that deepeval is installed and configured."
         )
 
     evaluation_id = uuid4().hex[:12]

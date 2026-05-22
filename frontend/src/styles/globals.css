@@ -1,0 +1,266 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design Tokens (CSS Custom Properties) ─────────────────────────────────
+   Centralize every primitive value here so components can reference
+   variables without coupling to Tailwind class names.                      */
+:root {
+  /* Surface scale */
+  --bg:        #09090e;
+  --surface:   #0f0f18;
+  --surface2:  #151520;
+  --surface3:  #1c1c2a;
+  --surface4:  #242435;
+
+  /* Borders */
+  --border:        rgba(255,255,255,0.06);
+  --border-hover:  rgba(255,255,255,0.12);
+  --border-focus:  rgba(124,109,250,0.45);
+
+  /* Brand palette */
+  --accent:   #7c6dfa;
+  --accent2:  #a78bfa;
+  --accent3:  #c4b5fd;
+
+  /* Semantic colours */
+  --green:  #34d399;
+  --red:    #f87171;
+  --amber:  #fbbf24;
+  --cyan:   #22d3ee;
+  --pink:   #e879a0;
+
+  /* Text scale */
+  --text:   #eaeaf4;
+  --muted:  #64647a;
+  --muted2: #8e8ea8;
+  --muted3: #aeaec8;
+
+  /* Radius scale */
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* Shadow tokens */
+  --shadow-sm:           0 2px 8px rgba(0,0,0,.3);
+  --shadow-md:           0 4px 20px rgba(0,0,0,.35);
+  --shadow-lg:           0 8px 32px rgba(0,0,0,.4);
+  --shadow-glow-accent:  0 0 20px rgba(124,109,250,.18);
+  --shadow-glow-green:   0 0 12px rgba(52,211,153,.22);
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body, #root { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: 'DM Mono', 'Courier New', monospace;
+    background-color: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Premium 3px scrollbar */
+  ::-webkit-scrollbar          { width: 3px; height: 3px; }
+  ::-webkit-scrollbar-track    { background: transparent; }
+  ::-webkit-scrollbar-thumb    { background: rgba(100,100,122,.25); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(124,109,250,.5); }
+  *                             { scrollbar-width: thin; scrollbar-color: rgba(100,100,122,.25) transparent; }
+
+  input, textarea, select { color-scheme: dark; outline: none; }
+  select option             { background: var(--surface3); color: var(--text); }
+
+  /* Keyboard-only focus ring (accessibility) */
+  :focus-visible {
+    outline: 2px solid rgba(124,109,250,.7);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  :focus:not(:focus-visible) { outline: none; }
+}
+
+@layer components {
+
+  /* ── Badges ─────────────────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold tracking-wide uppercase leading-none;
+  }
+  .badge-happy          { background: rgba(52,211,153,.15);  color: #34d399; border: 1px solid rgba(52,211,153,.3);  }
+  .badge-edge           { background: rgba(251,191,36,.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,.3);  }
+  .badge-negative       { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+  .badge-security       { background: rgba(251,146,60,.15);  color: #fb923c; border: 1px solid rgba(251,146,60,.3);  }
+  .badge-performance    { background: rgba(96,165,250,.15);  color: #60a5fa; border: 1px solid rgba(96,165,250,.3);  }
+  .badge-usability      { background: rgba(34,211,238,.15);  color: #22d3ee; border: 1px solid rgba(34,211,238,.3);  }
+  .badge-compatibility  { background: rgba(196,181,253,.15); color: #c4b5fd; border: 1px solid rgba(196,181,253,.3); }
+  /* Backward-compat aliases for legacy stored data */
+  .badge-usabilidad     { background: rgba(34,211,238,.15);  color: #22d3ee; border: 1px solid rgba(34,211,238,.3);  }
+  .badge-compatibilidad { background: rgba(196,181,253,.15); color: #c4b5fd; border: 1px solid rgba(196,181,253,.3); }
+
+  /* Priority */
+  .badge-alto   { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+  .badge-medio  { background: rgba(251,191,36,.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,.3);  }
+  .badge-bajo   { background: rgba(52,211,153,.15);  color: #34d399; border: 1px solid rgba(52,211,153,.3);  }
+
+  /* English aliases */
+  .badge-high     { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+  .badge-medium   { background: rgba(251,191,36,.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,.3);  }
+  .badge-low      { background: rgba(255,255,255,.05); color: #8e8ea8; border: 1px solid rgba(255,255,255,.1);  }
+  .badge-low-risk { background: rgba(52,211,153,.15);  color: #34d399; border: 1px solid rgba(52,211,153,.3);  }
+
+  /* ── Glass surface ──────────────────────────────────────────────────────── */
+  .glass {
+    background: linear-gradient(145deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.01) 100%);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+  }
+
+  /* ── KPI card hover lift ────────────────────────────────────────────────── */
+  .kpi-card {
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .kpi-card:hover {
+    border-color: var(--border-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* ── TC card hover ──────────────────────────────────────────────────────── */
+  .tc-card {
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .tc-card:hover {
+    border-color: var(--border-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  }
+
+  /* ── Section label ──────────────────────────────────────────────────────── */
+  .section-label {
+    @apply text-[9px] font-mono font-semibold uppercase;
+    color: var(--muted);
+    letter-spacing: 0.13em;
+    margin-bottom: 5px;
+  }
+
+  /* ── Form inputs ────────────────────────────────────────────────────────── */
+  .field-input {
+    @apply w-full text-[11px] transition-all duration-150;
+    background: rgba(28,28,42,.9);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .field-input::placeholder { color: #4a4a5e; }
+  .field-input:hover         { border-color: rgba(255,255,255,.1); }
+  .field-input:focus         { border-color: var(--border-focus); box-shadow: 0 0 0 2px rgba(124,109,250,.1); }
+
+  /* ── Primary action button (Generate) ──────────────────────────────────── */
+  .btn-generate {
+    @apply w-full flex items-center justify-center gap-2 py-2.5 text-[12px] font-mono font-semibold transition-all duration-200;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, #7c6dfa 0%, #5b4fe6 100%);
+    box-shadow: 0 4px 20px rgba(124,109,250,.25), inset 0 1px 0 rgba(255,255,255,.12);
+    color: white;
+  }
+  .btn-generate:hover:not(:disabled) {
+    box-shadow: 0 6px 28px rgba(124,109,250,.4), inset 0 1px 0 rgba(255,255,255,.16);
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+  }
+  .btn-generate:active:not(:disabled) { transform: translateY(0); }
+  .btn-generate:disabled              { opacity: .5; cursor: not-allowed; }
+
+  /* ── Evaluate button ────────────────────────────────────────────────────── */
+  .btn-evaluate {
+    @apply w-full flex items-center justify-center gap-2 py-2.5 text-[12px] font-mono font-semibold transition-all duration-200;
+    border-radius: var(--radius-sm);
+  }
+  .btn-evaluate:not(:disabled) {
+    background: linear-gradient(135deg, #6c5ef5 0%, #9b7ef8 100%);
+    box-shadow: 0 4px 20px rgba(124,109,250,.3), inset 0 1px 0 rgba(255,255,255,.12);
+    color: white;
+  }
+  .btn-evaluate:not(:disabled):hover {
+    box-shadow: 0 6px 28px rgba(124,109,250,.45), inset 0 1px 0 rgba(255,255,255,.16);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }
+  .btn-evaluate:not(:disabled):active { transform: translateY(0); }
+  .btn-evaluate:disabled {
+    background: rgba(255,255,255,.05);
+    color: #4a4a5e;
+    border: 1px solid rgba(255,255,255,.07);
+    cursor: not-allowed;
+  }
+
+  /* ── Spinner ────────────────────────────────────────────────────────────── */
+  .spinner {
+    width: 13px; height: 13px;
+    border: 1.5px solid rgba(255,255,255,.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: none;
+    flex-shrink: 0;
+  }
+  .spinner.active { display: block; }
+
+  /* ── Skeleton / shimmer loader ──────────────────────────────────────────── */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,.04) 25%,
+      rgba(255,255,255,.09) 50%,
+      rgba(255,255,255,.04) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+  }
+}
+
+@layer utilities {
+  .panel-fade { animation: panelFade .22s ease; }
+  .tc-enter   { animation: tcEnter .3s ease; }
+  .live-pulse { animation: livePulse 2s ease-in-out infinite; }
+
+  /* Hide scrollbar while keeping scrollability (chip rows) */
+  .scrollbar-hide                      { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar  { display: none; }
+
+  @keyframes panelFade {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes tcEnter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .35; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
+
+  /* Honour system preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .panel-fade, .tc-enter   { animation: none; }
+    .live-pulse              { animation: none; opacity: .7; }
+    .spinner                 { animation-duration: 1.5s; }
+    .skeleton                { animation: none; background: rgba(255,255,255,.04); }
+    .kpi-card, .tc-card      { transition: none; }
+  }
+}

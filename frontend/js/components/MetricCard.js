@@ -242,9 +242,9 @@ function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
     contentEl.innerHTML = `
       <div class="mc-pending-header">
         <span class="mc-overall-label">Evaluación DeepEval</span>
-        <span class="mc-real-tag">5 métricas · Ollama local</span>
+        <span class="mc-real-tag">5 metrics · Local Ollama</span>
         <p class="mc-pending-hint">
-          Haz clic en <strong>Evaluar con DeepEval</strong> para analizar la calidad de la suite generada.
+          Click <strong>Evaluate with DeepEval</strong> to analyse the quality of the generated suite.
         </p>
       </div>
       <div class="mc-grid">
@@ -264,10 +264,10 @@ function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
                       : overall >= 0.60 ? 'warn' : 'fail';
   const statusLabel   = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', pending: `${doneCount}/${total}` }[overallStatus];
   const qualityText   = !isComplete
-    ? `Evaluando… ${doneCount} de ${total} métricas completadas`
-    : ({ pass: 'Suite de alta calidad — lista para producción',
-         warn: 'Suite aceptable — hay mejoras recomendadas',
-         fail: 'Suite necesita revisión antes de usarse' })[overallStatus];
+    ? `Evaluating… ${doneCount} of ${total} metrics completed`
+    : ({ pass: 'High quality suite — ready for production',
+         warn: 'Acceptable suite — improvements recommended',
+         fail: 'Suite needs review before use' })[overallStatus];
 
   const radarSvg     = isComplete ? _renderRadar(metricsObj) : '';
   const scoreColor   = isComplete
@@ -279,10 +279,10 @@ function renderMetricsDashboard(metricsObj, reasonsObj = {}, testCases = null) {
     <div class="mc-overall">
       <div class="mc-overall-left">
         <span class="mc-overall-label">Evaluación DeepEval</span>
-        <span class="mc-real-tag">real · Ollama local</span>
+        <span class="mc-real-tag">real · Local Ollama</span>
         <p class="mc-quality-text ${isComplete ? `mc-s-${overallStatus}` : ''}" style="${!isComplete ? 'color:var(--muted)' : ''}">${qualityText}</p>
         <div class="mc-pass-rate">
-          <span class="mc-pass-pill">${passCount}/${doneCount} métricas PASS</span>
+          <span class="mc-pass-pill">${passCount}/${doneCount} metrics PASS</span>
           ${testCases ? `<span class="mc-tc-pill">${testCases.length} test cases</span>` : ''}
         </div>
       </div>

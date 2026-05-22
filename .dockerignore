@@ -11,8 +11,11 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
-dist/
 build/
+
+# ── Frontend: node_modules pesados se instalan en el stage frontend-builder ──
+frontend/node_modules/
+# dist/  ← NO excluir: el frontend-builder la produce dentro de su stage
 
 # ── Herramientas de desarrollo (no van al runtime) ───────────────────────────
 .pytest_cache/
@@ -39,6 +42,13 @@ requirements-dev.txt
 README.md
 CHANGELOG.md
 CONTRIBUTING.md
+
+# ── Mockup y assets de diseño (solo para referencia visual) ──────────────────
+mockup/
+
+# ── Frontend legacy (vanilla JS anterior — no usado en build React) ───────────
+frontend/js/
+frontend/css/styles.css
 
 # ── Logs y temporales ────────────────────────────────────────────────────────
 *.log
