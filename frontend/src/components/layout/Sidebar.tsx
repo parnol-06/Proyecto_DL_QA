@@ -118,7 +118,7 @@ export function Sidebar() {
                 className="flex-1 py-1.5 rounded-full text-[11px] font-mono font-medium transition-all duration-150 flex items-center justify-center gap-1"
                 style={
                   s.agentMode === id
-                    ? { background: 'rgba(124,109,250,.2)', color: '#c4b5fd', border: '1px solid rgba(124,109,250,.35)' }
+                    ? { background: 'var(--brand-glow-lo)', color: 'var(--brand)', border: '1px solid rgba(91,141,239,.35)' }
                     : { background: 'rgba(255,255,255,.04)', color: '#64647a', border: '1px solid rgba(255,255,255,.07)' }
                 }
               >
@@ -143,7 +143,7 @@ export function Sidebar() {
               checked={s.useRag && s.ragAvailable}
               onChange={e => s.setForm({ useRag: e.target.checked })}
               disabled={!s.ragAvailable}
-              className="accent-qa-accent w-3.5 h-3.5"
+              className="accent-brand w-3.5 h-3.5"
             />
             <span className="text-[11px] font-mono leading-relaxed"
                   style={{ color: s.ragAvailable ? '#34d399' : '#4a4a5e' }}>
@@ -167,7 +167,7 @@ export function Sidebar() {
                   type="checkbox"
                   checked={s.categories.includes(c.value)}
                   onChange={() => toggleCategory(c.value)}
-                  className="accent-qa-accent w-3 h-3"
+                  className="accent-brand w-3 h-3"
                 />
                 <span className="text-[10px] font-mono text-qa-muted2">{c.label}</span>
               </label>

@@ -71,9 +71,9 @@ function PanelTC() {
       {/* Stream preview (standard mode) */}
       {streaming && !agentMode && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-             style={{ background: 'rgba(124,109,250,.08)', border: '1px solid rgba(124,109,250,.2)' }}>
-          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 live-pulse" style={{ background: '#7c6dfa' }} />
-          <span className="text-[11px] font-mono" style={{ color: '#c4b5fd' }}>
+             style={{ background: 'var(--brand-glow-lo)', border: '1px solid rgba(91,141,239,.2)' }}>
+          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 live-pulse" style={{ background: 'var(--brand)' }} />
+          <span className="text-[11px] font-mono" style={{ color: 'var(--brand)' }}>
             {streamPreviewText || 'Streaming in real time...'}
           </span>
         </div>
@@ -110,7 +110,7 @@ function PanelTC() {
           ].map(({ label, fn }) => (
             <button key={label} onClick={fn}
                     className="text-[10px] font-mono px-2 py-0.5 rounded transition-colors"
-                    style={{ background: 'rgba(255,255,255,.04)', color: '#8e8ea8', border: '1px solid rgba(255,255,255,.07)' }}>
+                    style={{ background: 'rgba(255,255,255,.04)', color: 'var(--fg-3)', border: '1px solid var(--border-subtle)' }}>
               {label}
             </button>
           ))}
@@ -121,21 +121,21 @@ function PanelTC() {
       {!hasTC && (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-               style={{ background: 'rgba(124,109,250,.08)', border: '1px solid rgba(124,109,250,.12)' }}>
+               style={{ background: 'var(--brand-glow-lo)', border: '1px solid rgba(91,141,239,.12)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <rect x="4" y="3" width="16" height="18" rx="3"
-                    stroke="#7c6dfa" strokeWidth="1.4" fill="none" opacity=".6"/>
+                    stroke="var(--brand)" strokeWidth="1.4" fill="none" opacity=".6"/>
               <path d="M8 8 L16 8 M8 12 L16 12 M8 16 L12 16"
-                    stroke="#7c6dfa" strokeWidth="1.4" strokeLinecap="round" opacity=".5"/>
+                    stroke="var(--brand)" strokeWidth="1.4" strokeLinecap="round" opacity=".5"/>
               <path d="M14 15 L15.5 16.5 L18 14"
                     stroke="#34d399" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <p className="text-[12px] font-mono font-semibold" style={{ color: '#8e8ea8' }}>
+          <p className="text-[12px] font-mono font-semibold" style={{ color: 'var(--fg-3)' }}>
             No test cases
           </p>
-          <p className="text-[11px] font-mono text-center leading-relaxed" style={{ color: '#5a5a74' }}>
-            Enter a user story<br/>and press <span style={{ color: '#a78bfa' }}>Generate</span>
+          <p className="text-[11px] font-mono text-center leading-relaxed" style={{ color: 'var(--fg-4)' }}>
+            Enter a user story<br/>and press <span style={{ color: 'var(--brand)' }}>Generate</span>
           </p>
         </div>
       )}
@@ -230,22 +230,22 @@ function PanelAgents() {
   if (!traces.length) return (
     <div className="flex flex-col items-center justify-center py-16 gap-3 panel-fade">
       <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-           style={{ background: 'rgba(167,139,250,.07)', border: '1px solid rgba(167,139,250,.15)' }}>
+           style={{ background: 'rgba(91,141,239,.07)', border: '1px solid rgba(91,141,239,.15)' }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="5" r="2.5" stroke="#a78bfa" strokeWidth="1.3" fill="none" opacity=".9"/>
-          <circle cx="5" cy="18" r="2.5" stroke="#a78bfa" strokeWidth="1.3" fill="none" opacity=".75"/>
-          <circle cx="19" cy="18" r="2.5" stroke="#a78bfa" strokeWidth="1.3" fill="none" opacity=".75"/>
-          <line x1="12" y1="7.5" x2="6.5" y2="15.5" stroke="#a78bfa" strokeWidth="1" opacity=".4" strokeLinecap="round"/>
-          <line x1="12" y1="7.5" x2="17.5" y2="15.5" stroke="#a78bfa" strokeWidth="1" opacity=".4" strokeLinecap="round"/>
-          <line x1="7.5" y1="18" x2="16.5" y2="18" stroke="#a78bfa" strokeWidth="1" opacity=".3" strokeLinecap="round"/>
-          <circle cx="12" cy="12.5" r="1.2" fill="#a78bfa" opacity=".45"/>
+          <circle cx="12" cy="5" r="2.5" stroke="var(--brand)" strokeWidth="1.3" fill="none" opacity=".9"/>
+          <circle cx="5" cy="18" r="2.5" stroke="var(--brand)" strokeWidth="1.3" fill="none" opacity=".75"/>
+          <circle cx="19" cy="18" r="2.5" stroke="var(--brand)" strokeWidth="1.3" fill="none" opacity=".75"/>
+          <line x1="12" y1="7.5" x2="6.5" y2="15.5" stroke="var(--brand)" strokeWidth="1" opacity=".4" strokeLinecap="round"/>
+          <line x1="12" y1="7.5" x2="17.5" y2="15.5" stroke="var(--brand)" strokeWidth="1" opacity=".4" strokeLinecap="round"/>
+          <line x1="7.5" y1="18" x2="16.5" y2="18" stroke="var(--brand)" strokeWidth="1" opacity=".3" strokeLinecap="round"/>
+          <circle cx="12" cy="12.5" r="1.2" fill="var(--brand)" opacity=".45"/>
         </svg>
       </div>
-      <p className="text-[12px] font-mono font-semibold" style={{ color: '#8e8ea8' }}>
+      <p className="text-[12px] font-mono font-semibold" style={{ color: 'var(--fg-3)' }}>
         Pipeline inactive
       </p>
-      <p className="text-[11px] font-mono text-center leading-relaxed" style={{ color: '#5a5a74' }}>
-        Enable <span style={{ color: '#a78bfa' }}>⚙ Agents</span> mode and generate<br/>to view the pipeline trace
+      <p className="text-[11px] font-mono text-center leading-relaxed" style={{ color: 'var(--fg-4)' }}>
+        Enable <span style={{ color: 'var(--brand)' }}>⚙ Agents</span> mode and generate<br/>to view the pipeline trace
       </p>
     </div>
   )
@@ -261,8 +261,8 @@ function PanelAgents() {
       {traces.map((t, i) => (
         <div key={i} className="rounded-lg p-3" style={{ background: '#0f0f18', border: '1px solid rgba(255,255,255,.07)' }}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-mono font-semibold text-qa-accent2">{t.agent}</span>
-            <span className="text-[10px] font-mono text-qa-muted">{t.elapsed_s}s</span>
+            <span className="text-xs font-mono font-semibold" style={{ color: 'var(--brand)' }}>{t.agent}</span>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--fg-4)' }}>{t.elapsed_s}s</span>
           </div>
           <p className="text-[11px] font-mono text-qa-muted2 leading-relaxed">{t.summary}</p>
         </div>
@@ -384,7 +384,7 @@ export default function App() {
     : ''
 
   return (
-    <div className="flex flex-col h-full bg-qa-bg text-qa-text overflow-hidden">
+    <div className="flex flex-col h-full bg-base text-fg-1 bg-page-bloom overflow-hidden">
 
       {/* Three-column row: sidebar | main | right-panel */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -392,7 +392,7 @@ export default function App() {
 
         {/* Center column: KPI bar at top, tabs + panels below */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden"
-              style={{ background: '#0a0a14' }}>
+              style={{ background: 'var(--bg-app)' }}>
 
           {/* KPI bar — directly inside main, matches mockup layout */}
           <Header />
@@ -400,7 +400,7 @@ export default function App() {
           {/* Tab bar + inline workflow step */}
           <div role="tablist" aria-label="Generator sections"
                className="flex items-center border-b shrink-0"
-               style={{ borderColor: 'rgba(255,255,255,.06)', background: '#0d0d16' }}>
+               style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-panel)' }}>
             {TABS.map(tab => {
               const count = tab.hasCount ? getCount(tab.id) : null
               const active = activeTab === tab.id
@@ -413,17 +413,17 @@ export default function App() {
                   onClick={() => setActiveTab(tab.id)}
                   className="flex items-center gap-1.5 px-4 py-3 text-[11px] font-mono border-b-2 transition-all duration-150 shrink-0"
                   style={{
-                    borderBottomColor: active ? '#7c6dfa' : 'transparent',
-                    color: active ? '#c4b5fd' : '#5a5a74',
-                    background: active ? 'rgba(124,109,250,.05)' : 'transparent',
+                    borderBottomColor: active ? 'var(--brand)' : 'transparent',
+                    color: active ? 'var(--brand)' : 'var(--fg-4)',
+                    background: active ? 'var(--brand-glow-lo)' : 'transparent',
                   }}
                 >
                   {tab.label}
                   {count !== null && (
                     <span className="text-[9px] px-1.5 py-0.5 rounded-sm font-mono leading-none"
                           style={{
-                            background: count > 0 ? 'rgba(124,109,250,.18)' : 'rgba(255,255,255,.04)',
-                            color: count > 0 ? '#a78bfa' : '#4a4a5e',
+                            background: count > 0 ? 'var(--brand-glow-lo)' : 'rgba(255,255,255,.04)',
+                            color: count > 0 ? 'var(--brand)' : 'var(--fg-4)',
                           }}>
                       {count}
                     </span>
@@ -437,17 +437,17 @@ export default function App() {
               <div className="w-1.5 h-1.5 rounded-full transition-all duration-300"
                    style={{
                      background: workflowStep === 'input'    ? 'rgba(100,100,122,.35)'
-                               : workflowStep === 'generate' ? '#7c6dfa'
+                               : workflowStep === 'generate' ? 'var(--brand)'
                                : workflowStep === 'evaluate' ? '#22d3ee'
                                : '#34d399',
-                     boxShadow: workflowStep === 'generate' ? '0 0 6px rgba(124,109,250,.7)'
+                     boxShadow: workflowStep === 'generate' ? '0 0 6px var(--brand-glow)'
                                : workflowStep === 'evaluate' ? '0 0 6px rgba(34,211,238,.7)'
                                : 'none',
                      animation: (workflowStep === 'generate' || workflowStep === 'evaluate')
                                ? 'livePulse 1.5s ease-in-out infinite' : 'none',
                    }} />
               <span className="text-[10px] font-mono"
-                    style={{ color: workflowStep === 'input' ? '#4a4a5e' : workflowStep === 'export' ? '#34d399' : '#a78bfa' }}>
+                    style={{ color: workflowStep === 'input' ? 'var(--fg-4)' : workflowStep === 'export' ? '#34d399' : 'var(--brand)' }}>
                 {STEP_LABELS[workflowStep] || workflowStep}{stepTimer}
               </span>
             </div>
@@ -470,8 +470,8 @@ export default function App() {
 
       {/* Footer */}
       <footer className="shrink-0 flex items-center justify-end px-4 py-1.5 border-t"
-              style={{ background: '#09090e', borderColor: 'rgba(255,255,255,.04)' }}>
-        <span className="text-[10px] font-mono text-qa-muted">© 2026 Arnol Ferney Pérez &amp; Jesus Andres Cabezas</span>
+              style={{ background: 'var(--bg-base)', borderColor: 'var(--border-subtle)' }}>
+        <span className="text-[10px] font-mono" style={{ color: 'var(--fg-4)' }}>© 2026 Arnol Ferney Pérez &amp; Jesus Andres Cabezas</span>
       </footer>
 
       <Toast />

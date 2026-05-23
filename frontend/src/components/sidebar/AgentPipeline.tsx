@@ -14,12 +14,12 @@ const NODES: Array<{ key: AgentKey; name: string; desc: string }> = [
 const NODE_ICONS: Record<string, { bg: string; border: string; color: string; Icon: LucideIcon }> = {
   generator: { bg: 'rgba(251,146,60,.13)',  border: 'rgba(251,146,60,.28)',  color: '#fb923c', Icon: Settings2      },
   reviewer:  { bg: 'rgba(34,211,238,.10)',  border: 'rgba(34,211,238,.22)',  color: '#22d3ee', Icon: ClipboardCheck },
-  optimizer: { bg: 'rgba(124,109,250,.13)', border: 'rgba(124,109,250,.28)', color: '#a78bfa', Icon: Sparkles       },
+  optimizer: { bg: 'rgba(91,141,239,.13)',  border: 'rgba(91,141,239,.28)',  color: '#5B8DEF', Icon: Sparkles       },
 }
 
 const STATE_COLORS = {
   idle:    { dot: 'rgba(100,100,122,.4)', border: 'rgba(255,255,255,.06)', text: '#64647a'  },
-  running: { dot: '#7c6dfa',              border: 'rgba(124,109,250,.35)', text: '#c4b5fd'  },
+  running: { dot: '#5B8DEF',              border: 'rgba(91,141,239,.35)',  text: '#5B8DEF'  },
   done:    { dot: '#34d399',              border: 'rgba(52,211,153,.25)',  text: '#34d399'  },
   error:   { dot: '#f87171',              border: 'rgba(248,113,113,.25)', text: '#f87171'  },
 }
@@ -81,7 +81,7 @@ function AgentNode({ nodeKey }: { nodeKey: AgentKey }) {
             <div className="h-full rounded-full transition-all duration-500"
                  style={{
                    width: `${node.progress}%`,
-                   background: node.state === 'done' ? '#34d399' : '#7c6dfa',
+                   background: node.state === 'done' ? '#34d399' : '#5B8DEF',
                  }} />
           </div>
           {node.stats && (
@@ -153,12 +153,12 @@ export function AgentPipeline() {
         <div className="border-t pt-3" style={{ borderColor: 'rgba(255,255,255,.05)' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px]" style={{ color: '#7c6dfa' }}>⚙</span>
+              <span className="text-[10px]" style={{ color: 'var(--brand)' }}>⚙</span>
               <p className="section-label mb-0">Pipeline CrewAI</p>
             </div>
             {!agentPipelineVisible && (
               <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
-                    style={{ background: 'rgba(124,109,250,.1)', color: '#8e8ea8', border: '1px solid rgba(124,109,250,.2)' }}>
+                    style={{ background: 'rgba(91,141,239,.1)', color: 'var(--fg-3)', border: '1px solid rgba(91,141,239,.2)' }}>
                 3 agents
               </span>
             )}

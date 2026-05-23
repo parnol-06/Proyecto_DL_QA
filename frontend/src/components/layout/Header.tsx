@@ -107,7 +107,7 @@ export function Header() {
     <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0"
          style={{ background: '#09090e', borderColor: 'rgba(255,255,255,.05)' }}>
       <div className="flex gap-2 min-w-0 w-full">
-        <KpiCard label="Test Cases" icon={KpiIcon.tc}  value={tcCount}  spark={SPARKS.tc}  color="#a78bfa" tintRgb="124,109,250" />
+        <KpiCard label="Test Cases" icon={KpiIcon.tc}  value={tcCount}  spark={SPARKS.tc}  color="#5B8DEF" tintRgb="91,141,239" />
         <KpiCard label="Bugs"       icon={KpiIcon.bug} value={bugCount} spark={SPARKS.bug} color="#f87171" tintRgb="248,113,113" />
         <KpiCard label="Coverage"   icon={KpiIcon.cov} value={covPct}   spark={SPARKS.cov} color="#34d399" tintRgb="52,211,153"  />
         <KpiCard label="Score"      icon={KpiIcon.scr} value={scoreVal} spark={SPARKS.scr} color="#fbbf24" tintRgb="251,191,36"  />

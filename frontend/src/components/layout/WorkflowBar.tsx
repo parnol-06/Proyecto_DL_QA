@@ -33,17 +33,17 @@ export function WorkflowBar() {
                 className="w-2 h-2 rounded-full transition-all duration-300"
                 style={{
                   background: state === 'done' ? '#34d399'
-                            : state === 'active' ? '#7c6dfa'
+                            : state === 'active' ? 'var(--brand)'
                             : 'rgba(100,100,122,.35)',
-                  boxShadow: state === 'active' ? '0 0 6px rgba(124,109,250,.5)' : 'none',
+                  boxShadow: state === 'active' ? '0 0 6px var(--brand-glow)' : 'none',
                 }}
               />
               <span className="text-[10px] font-mono transition-colors"
-                    style={{ color: state === 'active' ? '#c4b5fd' : state === 'done' ? '#34d399' : '#64647a' }}>
+                    style={{ color: state === 'active' ? 'var(--brand)' : state === 'done' ? '#34d399' : '#64647a' }}>
                 {step.label}
               </span>
               {isTimer && (
-                <span className="text-[9px] font-mono" style={{ color: '#7c6dfa' }}>
+                <span className="text-[9px] font-mono" style={{ color: 'var(--brand)' }}>
                   {fmtTime(step.id === 'generate' ? generatorElapsed : evalTimerElapsed)}
                 </span>
               )}

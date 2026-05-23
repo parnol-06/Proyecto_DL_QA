@@ -4,7 +4,7 @@ import type { MetricResult } from '../../types'
 const METRIC_META = {
   coverage:              { label: 'Test Coverage',          threshold: 0.70, color: '#34d399' },
   relevancy:             { label: 'Relevancy',              threshold: 0.70, color: '#22d3ee' },
-  consistency:           { label: 'Consistency',            threshold: 0.65, color: '#a78bfa' },
+  consistency:           { label: 'Consistency',            threshold: 0.65, color: '#5B8DEF' },
   specificity:           { label: 'Step Specificity',       threshold: 0.65, color: '#fbbf24' },
   nonfunctional_balance: { label: 'Non-Functional Balance', threshold: 0.60, color: '#e879a0' },
 }
@@ -139,17 +139,17 @@ export function MetricsRadar() {
       ))}
       {/* Data polygon */}
       {scores.some(s => s > 0) && (
-        <polygon points={polyStr} fill="rgba(124,109,250,.18)" stroke="#7c6dfa" strokeWidth="1.2" />
+        <polygon points={polyStr} fill="rgba(91,141,239,.18)" stroke="#5B8DEF" strokeWidth="1.2" />
       )}
       {/* Score dots */}
       {polygonPoints.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="2.5" fill={scores[i] > 0 ? '#7c6dfa' : 'rgba(100,100,122,.3)'} />
+        <circle key={i} cx={x} cy={y} r="2.5" fill={scores[i] > 0 ? '#5B8DEF' : 'rgba(100,100,122,.3)'} />
       ))}
       {/* Score labels */}
       {scores.map((s, i) => {
         const [x, y] = pt(1.18, i)
         return <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle"
-                     fontSize="8" fill={s > 0 ? '#a78bfa' : '#64647a'}>{s > 0 ? s.toFixed(2) : '0.00'}</text>
+                     fontSize="8" fill={s > 0 ? '#5B8DEF' : '#64647a'}>{s > 0 ? s.toFixed(2) : '0.00'}</text>
       })}
     </svg>
   )

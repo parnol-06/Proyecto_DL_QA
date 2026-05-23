@@ -6,7 +6,7 @@ import type { MetricResult } from '../../types'
 const EVAL_STEPS = [
   { key: 'coverage',              name: 'Test Coverage',          color: '#34d399', threshold: 0.60 },
   { key: 'relevancy',             name: 'Test Relevancy',         color: '#22d3ee', threshold: 0.70 },
-  { key: 'consistency',           name: 'Test Consistency',       color: '#a78bfa', threshold: 0.65 },
+  { key: 'consistency',           name: 'Test Consistency',       color: '#5B8DEF', threshold: 0.65 },
   { key: 'specificity',           name: 'Step Specificity',       color: '#fbbf24', threshold: 0.60 },
   { key: 'nonfunctional_balance', name: 'Non-Functional Balance', color: '#e879a0', threshold: 0.55 },
 ]
@@ -24,8 +24,8 @@ function StepNode({ step, result, isActive, isLast }: StepNodeProps) {
   const thrPct = Math.round(step.threshold * 100)
 
   const dotSymbol = { idle: '', running: '·', pass: '✓', warn: '!' }[st]
-  const dotColor = { idle: 'rgba(100,100,122,.35)', running: '#7c6dfa', pass: '#34d399', warn: '#fbbf24' }[st]
-  const badgeColor = { idle: '#64647a', running: '#7c6dfa', pass: '#34d399', warn: '#fbbf24' }[st]
+  const dotColor = { idle: 'rgba(100,100,122,.35)', running: '#5B8DEF', pass: '#34d399', warn: '#fbbf24' }[st]
+  const badgeColor = { idle: '#64647a', running: '#5B8DEF', pass: '#34d399', warn: '#fbbf24' }[st]
   const badgeLabel = { idle: 'PENDING', running: 'EVALUATING', pass: `PASS · ${result?.score.toFixed(2)}`, warn: `WARN · ${result?.score.toFixed(2)}` }[st]
 
   return (
@@ -41,7 +41,7 @@ function StepNode({ step, result, isActive, isLast }: StepNodeProps) {
                }}>
             {dotSymbol}
           </div>
-          <span className="text-[11px] font-mono flex-1" style={{ color: st === 'idle' ? '#64647a' : '#c4b5fd' }}>{step.name}</span>
+          <span className="text-[11px] font-mono flex-1" style={{ color: st === 'idle' ? '#64647a' : 'var(--brand)' }}>{step.name}</span>
           {result && (
             <span className="text-[9px] font-mono text-qa-muted">{result.elapsed_ms}ms</span>
           )}

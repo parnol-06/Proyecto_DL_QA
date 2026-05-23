@@ -6,13 +6,13 @@ const AGENT_KEYS = ['gen', 'rev', 'opt'] as const
 const AGENT_NAMES = { gen: 'Generator', rev: 'Reviewer', opt: 'Optimizer' }
 
 const LOG_COLORS: Record<string, string> = {
-  info: '#8e8ea8', done: '#34d399', case: '#7c6dfa',
+  info: '#8e8ea8', done: '#34d399', case: '#5B8DEF',
   pass: '#34d399', fail: '#f87171', mod: '#fbbf24',
   warn: '#fbbf24', error: '#f87171',
 }
 
 const AGENT_STATE_COLORS: Record<string, string> = {
-  idle: '#64647a', running: '#7c6dfa', done: '#34d399', error: '#f87171',
+  idle: '#64647a', running: '#5B8DEF', done: '#34d399', error: '#f87171',
 }
 
 export function StreamMonitor() {
@@ -43,7 +43,7 @@ export function StreamMonitor() {
                      animation: streamMonitor.agents[key] === 'running' ? 'livePulse 1.2s ease-in-out infinite' : 'none',
                    }} />
               <span className="text-[10px] font-mono"
-                    style={{ color: streamMonitor.agents[key] === 'running' ? '#c4b5fd' : '#64647a' }}>
+                    style={{ color: streamMonitor.agents[key] === 'running' ? 'var(--brand)' : '#64647a' }}>
                 {AGENT_NAMES[key]}
               </span>
             </div>

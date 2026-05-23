@@ -8,7 +8,7 @@ const CATEGORIES = [
   { value: 'security',      label: 'Security',      color: '#fb923c', bg: 'rgba(251,146,60,.16)',  border: 'rgba(251,146,60,.4)',  glow: 'rgba(251,146,60,.12)'  },
   { value: 'performance',   label: 'Performance',   color: '#60a5fa', bg: 'rgba(96,165,250,.16)',  border: 'rgba(96,165,250,.4)',  glow: 'rgba(96,165,250,.12)'  },
   { value: 'usability',     label: 'Usability',     color: '#22d3ee', bg: 'rgba(34,211,238,.16)',  border: 'rgba(34,211,238,.4)',  glow: 'rgba(34,211,238,.12)'  },
-  { value: 'compatibility', label: 'Compatibility', color: '#c4b5fd', bg: 'rgba(196,181,253,.16)', border: 'rgba(196,181,253,.4)', glow: 'rgba(196,181,253,.12)' },
+  { value: 'compatibility', label: 'Compatibility', color: '#60a5fa', bg: 'rgba(96,165,250,.16)',  border: 'rgba(96,165,250,.4)',  glow: 'rgba(96,165,250,.12)'  },
 ]
 
 const PRIORITIES = [

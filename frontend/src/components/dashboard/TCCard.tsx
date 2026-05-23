@@ -60,11 +60,11 @@ export function TCCard({ tc, index, onReplace, defaultOpen = false }: Props) {
         onClick={() => setOpen(o => !o)}
         onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setOpen(o => !o)}
         className="flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors"
-        style={{ background: open ? 'rgba(124,109,250,.04)' : 'transparent' }}
+        style={{ background: open ? 'rgba(91,141,239,.04)' : 'transparent' }}
       >
         {/* ID chip */}
         <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0"
-              style={{ background: 'rgba(124,109,250,.15)', color: '#a78bfa', border: '1px solid rgba(124,109,250,.25)' }}>
+              style={{ background: 'rgba(91,141,239,.15)', color: 'var(--brand)', border: '1px solid rgba(91,141,239,.25)' }}>
           {id}
         </span>
 

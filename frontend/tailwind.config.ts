@@ -1,6 +1,8 @@
 import type { Config } from 'tailwindcss'
+import qaPreset from './tailwind-preset.js'
 
 export default {
+  presets: [qaPreset],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -10,9 +12,9 @@ export default {
         'qa-s2':     '#151520',
         'qa-s3':     '#1c1c2a',
         'qa-s4':     '#242435',
-        'qa-accent':  '#7c6dfa',
-        'qa-accent2': '#a78bfa',
-        'qa-accent3': '#c4b5fd',
+        'qa-accent':  '#5B8DEF',
+        'qa-accent2': '#60A5FA',
+        'qa-accent3': 'rgba(91,141,239,0.7)',
         'qa-green':   '#34d399',
         'qa-red':     '#f87171',
         'qa-amber':   '#fbbf24',
@@ -25,7 +27,6 @@ export default {
       },
       fontFamily: {
         head: ['Syne', 'sans-serif'],
-        mono: ['DM Mono', 'monospace'],
       },
       borderRadius: {
         xs:      '5px',

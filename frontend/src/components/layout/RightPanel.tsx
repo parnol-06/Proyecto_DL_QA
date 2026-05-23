@@ -11,7 +11,7 @@ import { scoreColor } from '../../lib/utils'
 const METRIC_BARS = [
   { key: 'coverage',              shortKey: 'cov', name: 'Coverage',   color: '#34d399' },
   { key: 'relevancy',             shortKey: 'rel', name: 'Relevancy',  color: '#22d3ee' },
-  { key: 'consistency',           shortKey: 'con', name: 'Consistency',color: '#a78bfa' },
+  { key: 'consistency',           shortKey: 'con', name: 'Consistency',color: 'var(--brand)' },
   { key: 'specificity',           shortKey: 'spe', name: 'Specificity',color: '#fbbf24' },
   { key: 'nonfunctional_balance', shortKey: 'nfb', name: 'NFR Balance',color: '#e879a0' },
 ]
@@ -64,21 +64,21 @@ export function RightPanel() {
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                style={{
-                 background: 'linear-gradient(135deg, rgba(124,109,250,.25), rgba(79,63,245,.2))',
-                 border: '1px solid rgba(124,109,250,.3)',
-                 boxShadow: '0 2px 8px rgba(124,109,250,.2)',
+                 background: 'linear-gradient(135deg, rgba(91,141,239,.25), rgba(61,107,209,.2))',
+                 border: '1px solid rgba(91,141,239,.3)',
+                 boxShadow: '0 2px 8px rgba(91,141,239,.2)',
                }}>
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="5.5" stroke="#a78bfa" strokeWidth="1"   fill="none" opacity=".55"/>
-              <circle cx="8" cy="8" r="2.5" stroke="#a78bfa" strokeWidth=".9"  fill="none" opacity=".8"/>
-              <circle cx="8" cy="8" r="1.1" fill="#a78bfa" opacity=".95"/>
-              <line x1="8" y1="2.2" x2="8" y2="5.3" stroke="#a78bfa" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
-              <line x1="8" y1="10.7" x2="8" y2="13.8" stroke="#a78bfa" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
-              <line x1="2.2" y1="8" x2="5.3" y2="8" stroke="#a78bfa" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
-              <line x1="10.7" y1="8" x2="13.8" y2="8" stroke="#a78bfa" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
+              <circle cx="8" cy="8" r="5.5" stroke="var(--brand)" strokeWidth="1"   fill="none" opacity=".55"/>
+              <circle cx="8" cy="8" r="2.5" stroke="var(--brand)" strokeWidth=".9"  fill="none" opacity=".8"/>
+              <circle cx="8" cy="8" r="1.1" fill="var(--brand)" opacity=".95"/>
+              <line x1="8" y1="2.2" x2="8" y2="5.3" stroke="var(--brand)" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
+              <line x1="8" y1="10.7" x2="8" y2="13.8" stroke="var(--brand)" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
+              <line x1="2.2" y1="8" x2="5.3" y2="8" stroke="var(--brand)" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
+              <line x1="10.7" y1="8" x2="13.8" y2="8" stroke="var(--brand)" strokeWidth=".8" strokeLinecap="round" opacity=".5"/>
             </svg>
           </div>
-          <span className="text-xs font-mono font-semibold" style={{ color: '#c4b5fd' }}>Ollama</span>
+          <span className="text-xs font-mono font-semibold" style={{ color: 'var(--brand)' }}>Ollama</span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -124,7 +124,7 @@ export function RightPanel() {
             {!s.modelLoaded && (
               <button onClick={handlePullModel}
                       className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(124,109,250,.15)', color: '#a78bfa', border: '1px solid rgba(124,109,250,.3)' }}>
+                      style={{ background: 'rgba(91,141,239,.15)', color: 'var(--brand)', border: '1px solid rgba(91,141,239,.3)' }}>
                 ⬇ Download
               </button>
             )}
@@ -133,14 +133,14 @@ export function RightPanel() {
           <div className="mt-2.5">
             <div className="flex items-center justify-between mb-1">
               <span className="section-label mb-0">Temperature</span>
-              <span className="text-[10px] font-mono" style={{ color: '#a78bfa' }}>{s.temperature.toFixed(2)}</span>
+              <span className="text-[10px] font-mono" style={{ color: 'var(--brand)' }}>{s.temperature.toFixed(2)}</span>
             </div>
             <input
               type="range" min="0" max="1" step="0.05"
               value={s.temperature}
               onChange={e => s.setForm({ temperature: parseFloat(e.target.value) })}
               className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-              style={{ accentColor: '#7c6dfa' }}
+              style={{ accentColor: 'var(--brand)' }}
             />
           </div>
         </div>
@@ -149,14 +149,14 @@ export function RightPanel() {
         <div style={SEP} className="pb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px]" style={{ color: '#7c6dfa' }}>◈</span>
+              <span className="text-[10px]" style={{ color: 'var(--brand)' }}>◈</span>
               <p className="section-label mb-0">DeepEval</p>
             </div>
             {metricsHaveData && (
               <button
                 onClick={() => s.setActiveTab('metrics')}
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded-full transition-colors"
-                style={{ background: 'rgba(124,109,250,.1)', color: '#8e8ea8', border: '1px solid rgba(124,109,250,.2)' }}
+                style={{ background: 'rgba(91,141,239,.1)', color: 'var(--fg-3)', border: '1px solid rgba(91,141,239,.2)' }}
               >
                 view all →
               </button>
@@ -176,7 +176,7 @@ export function RightPanel() {
                 const result = s.evalMetrics[key]
                 const state  = s.metricBarStates[shortKey]
                 const pct    = result ? Math.round(result.score * 100) : 0
-                const dotColors = { idle: '#64647a', running: '#7c6dfa', pass: '#34d399', warn: '#fbbf24' }
+                const dotColors = { idle: '#64647a', running: 'var(--brand)', pass: '#34d399', warn: '#fbbf24' }
                 return (
                   <div key={key} className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"

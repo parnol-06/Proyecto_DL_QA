@@ -9,7 +9,7 @@ export function CoveragePanel({ cov }: Props) {
   const circ    = 2 * Math.PI * r
   const dash    = Math.max(0, Math.min(circ, (pct / 100) * circ))
   const gap     = circ - dash
-  const ringColor = pct >= 80 ? '#34d399' : pct >= 60 ? '#7c6dfa' : '#fbbf24'
+  const ringColor = pct >= 80 ? '#34d399' : pct >= 60 ? '#5B8DEF' : '#fbbf24'
   const covered   = cov.categories_covered || []
   const missing   = cov.missing_areas || []
   const total     = cov.total_test_cases || 0

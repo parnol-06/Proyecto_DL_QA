@@ -1,0 +1,138 @@
+/* ============================================================
+   QA Generator — Design System Tokens
+   Dark-mode premium SaaS. Vercel/Linear/OpenAI-adjacent.
+   Source: qa-generator-design-system (Claude Design handoff)
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ---------- Surface (graphite + blue undertone) ---------- */
+  --bg-base:        #07090D;
+  --bg-app:         #0A0D13;
+  --bg-panel:       #0E121A;
+  --bg-card:        #11151F;
+  --bg-card-hi:     #161B27;
+  --bg-input:       #0C0F16;
+  --bg-overlay:     rgba(10, 13, 19, 0.72);
+
+  /* ---------- Borders ---------- */
+  --border-subtle:  rgba(255, 255, 255, 0.06);
+  --border-soft:    rgba(255, 255, 255, 0.09);
+  --border-strong:  rgba(255, 255, 255, 0.14);
+  --border-focus:   rgba(91, 141, 239, 0.50);
+
+  /* ---------- Foreground ---------- */
+  --fg-1:           #ECEEF2;
+  --fg-2:           #BFC4CE;
+  --fg-3:           #8A91A0;
+  --fg-4:           #5A6172;
+  --fg-inverse:     #0A0D13;
+
+  /* ---------- Brand & accent ---------- */
+  --brand:          #5B8DEF;
+  --brand-soft:     #3D6BD1;
+  --brand-glow:     rgba(91, 141, 239, 0.35);
+  --brand-glow-lo:  rgba(91, 141, 239, 0.12);
+
+  /* ---------- Semantic ---------- */
+  --ok:             #4ADE80;
+  --ok-soft:        rgba(74, 222, 128, 0.14);
+  --ok-border:      rgba(74, 222, 128, 0.30);
+
+  --warn:           #F59E0B;
+  --warn-soft:      rgba(245, 158, 11, 0.13);
+  --warn-border:    rgba(245, 158, 11, 0.28);
+
+  --danger:         #F87171;
+  --danger-soft:    rgba(248, 113, 113, 0.13);
+  --danger-border:  rgba(248, 113, 113, 0.30);
+
+  --info:           #60A5FA;
+  --info-soft:      rgba(96, 165, 250, 0.12);
+
+  --tag-tan:        #C8A66B;
+  --tag-tan-soft:   rgba(200, 166, 107, 0.10);
+  --tag-tan-border: rgba(200, 166, 107, 0.25);
+
+  /* ---------- Type ---------- */
+  --font-sans: "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-15: 0.9375rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
+  --fs-32: 2rem;
+  --fs-40: 2.5rem;
+
+  --lh-tight: 1.15;
+  --lh-snug:  1.35;
+  --lh-base:  1.5;
+  --lh-loose: 1.65;
+
+  --ls-tight:   -0.02em;
+  --ls-snug:    -0.01em;
+  --ls-base:    0;
+  --ls-wide:    0.06em;
+  --ls-widest:  0.12em;
+
+  /* ---------- Spacing ---------- */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ---------- Radii ---------- */
+  --r-xs:   4px;
+  --r-sm:   6px;
+  --r-md:   10px;
+  --r-lg:   14px;
+  --r-xl:   18px;
+  --r-2xl:  22px;
+  --r-full: 999px;
+
+  /* ---------- Shadows / glows ---------- */
+  --shadow-card:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 1px 2px rgba(0,0,0,0.4),
+    0 12px 32px -16px rgba(0,0,0,0.6);
+  --shadow-pop:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 8px 24px -8px rgba(0,0,0,0.55),
+    0 24px 60px -24px rgba(0,0,0,0.6);
+  --shadow-focus: 0 0 0 3px var(--brand-glow-lo);
+
+  --glow-brand:  0 0 24px -2px var(--brand-glow);
+  --glow-ok:     0 0 24px -4px rgba(74, 222, 128, 0.35);
+  --glow-danger: 0 0 24px -4px rgba(248, 113, 113, 0.30);
+
+  /* ---------- Motion ---------- */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast:    120ms;
+  --dur-base:    180ms;
+  --dur-slow:    260ms;
+}
+
+/* Semantic role utility classes (framework-agnostic, use alongside Tailwind) */
+.ds-h1 { font: 600 var(--fs-32)/var(--lh-tight) var(--font-sans); letter-spacing: var(--ls-tight); color: var(--fg-1); }
+.ds-h2 { font: 600 var(--fs-24)/var(--lh-tight) var(--font-sans); letter-spacing: var(--ls-snug);  color: var(--fg-1); }
+.ds-h3 { font: 600 var(--fs-20)/var(--lh-snug)  var(--font-sans); letter-spacing: var(--ls-snug);  color: var(--fg-1); }
+.ds-h4 { font: 600 var(--fs-18)/var(--lh-snug)  var(--font-sans); color: var(--fg-1); }
+.ds-body    { font: 400 var(--fs-15)/var(--lh-base) var(--font-sans); color: var(--fg-2); }
+.ds-caption { font: 500 var(--fs-12)/var(--lh-snug) var(--font-sans); color: var(--fg-3); }
+.ds-eyebrow { font: 600 var(--fs-12)/1 var(--font-sans); letter-spacing: var(--ls-widest); text-transform: uppercase; color: var(--fg-3); }
+.ds-code    { font: 500 var(--fs-13)/var(--lh-snug) var(--font-mono); color: var(--fg-2); }
+.ds-metric  { font: 600 var(--fs-32)/1 var(--font-sans); letter-spacing: var(--ls-tight); color: var(--fg-1); }
+.ds-tc-id   { font: 500 var(--fs-18)/1 var(--font-mono); color: var(--fg-3); letter-spacing: var(--ls-snug); }
